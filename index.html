@@ -512,7 +512,9 @@ function cardContas(M){
     return `<tr><td>${nome}</td><td class="v">${brl(s.ini)}</td><td class="v pos">${brl(s.ent)}</td><td class="v neg">${brl(s.sai)}</td><td class="v"><b>${brl(s.real)}</b></td><td class="v ${s.prev<0?"neg":""}">${brl(s.prev)}</td><td class="v">${inf}</td><td class="v">${conf}</td></tr>`;
   };
   const vis=s=>s.o.ativo!==false||(s.fim!=null&&Math.abs(s.fim)>0.005);
-  const corpo=ORDEM_G.map(g=>{const arr=sal.filter(s=>s.grupo===g&&vis(s));if(!arr.length)return "";
+  const ehDinheiro=s=>semAcento(s.c)==="dinheiro"||s.o.icone==="dinheiro";
+  const ordena=(g,arr)=>[...arr].sort((a,b)=>(ehDinheiro(a)-ehDinheiro(b))||a.c.localeCompare(b.c,"pt-BR",{sensitivity:"base",numeric:true}));
+  const corpo=ORDEM_G.map(g=>{const arr=ordena(g,sal.filter(s=>s.grupo===g&&vis(s)));if(!arr.length)return "";
     const tot=k=>arr.reduce((a,s)=>a+(s.hist?(k==="prev"||k==="real"?(s.fim||0):0):s[k]),0);
     return `<tbody><tr class="grupo"><td><span class="nome">${fe(GRUPOS[g].ic)}${GRUPOS[g].nome}</span></td><td class="v">${brl(tot("ini"))}</td><td></td><td></td><td class="v">${brl(tot("real"))}</td><td class="v">${brl(tot("prev"))}</td><td></td><td></td></tr>${arr.map(linha).join("")}</tbody>`}).join("");
   const RS=resumoSaldos(M);
