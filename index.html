@@ -619,6 +619,15 @@ function filtrarCat(c,sub,m){Object.assign(F,{per:"mes",tp:"D",cat:c,sub:sub==nu
 function opts(lista,sel,vazio){return (vazio!=null?`<option value="">${vazio}</option>`:"")+lista.map(o=>`<option ${o===sel?"selected":""}>${esc(o)}</option>`).join("")}
 const descT=l=>`${l.f||"?"} → ${l.fd||"?"}`;
 function chaveOrd(l,k){if(k==="v")return l.v;if(k==="c")return l.c;if(k==="l")return semAcento(l.tp==="T"?descT(l):l.l);if(k==="cat")return semAcento((l.cat||"")+" "+(l.sub||""));if(k==="f")return semAcento(l.f);return l[k]||""}
+/* opções do filtro de subcategoria: só da categoria escolhida, ou todas em blocos por categoria */
+function optsSubFiltro(){
+  const val=(c,s)=>`${c}|${s}`;const selV=F.sub!=null?val(F.cat,F.sub):"";
+  const op=(c,s)=>`<option value="${esc(val(c,s))}" ${val(c,s)===selV?"selected":""}>${esc(s)}</option>`;
+  let h='<option value="">Todas</option>';
+  if(F.cat)return h+alfa(subsDe(F.cat).map(s=>s.nome)).map(s=>op(F.cat,s)).join("");
+  for(const c of alfa(C().catD.map(c=>c.nome))){const ss=alfa(subsDe(c).map(s=>s.nome));if(ss.length)h+=`<optgroup label="${esc(c)}">${ss.map(s=>op(c,s)).join("")}</optgroup>`}
+  return h;
+}
 function renderLanc(){
   const el=$("#aba-lanc");const Y=S.mes.slice(0,4);
   let L=dados().filter(l=>(F.per==="todos"||(F.per==="ano"?l.m.startsWith(Y):l.m===S.mes))&&(!F.tp||l.tp===F.tp)&&(!F.conta||l.f===F.conta||l.fd===F.conta)&&(!F.cat||l.cat===F.cat)&&(F.sub==null||l.sub===F.sub)&&(F.c===""||l.c===+F.c)&&(!F.pq||l.pq===F.pq)&&(!F.pj||l.pj===F.pj)&&(!F.rev||l.revisar));
@@ -633,12 +642,13 @@ function renderLanc(){
       <div><label>Tipo</label><select id="fTp"><option value="">Todos</option>${[["D","Despesas"],["R","Receitas"],["T","Transferências"]].map(([v,t])=>`<option value="${v}" ${F.tp===v?"selected":""}>${t}</option>`).join("")}</select></div>
       <div><label>Conta</label><select id="fConta">${optsContas(F.conta,"Todas",false)}</select></div>
       <div><label>Categoria</label><select id="fCat">${opts(cats,F.cat,"Todas")}</select></div>
+      <div><label>Subcategoria</label><select id="fSub" ${F.tp==="R"||F.tp==="T"?"disabled":""}>${optsSubFiltro()}</select></div>
       <div><label>Status</label><select id="fC"><option value="">Todos</option>${STATUS.map((s,i)=>`<option value="${i}" ${F.c===String(i)?"selected":""}>${s}</option>`).join("")}</select></div>
       <div><label>Para quem</label><select id="fPq">${opts(alfa(C().pessoas),F.pq,"Todos")}</select></div>
       <div><label>Projeto</label><select id="fPj">${opts(alfa(C().projetos),F.pj,"Todos")}</select></div>
       <div><label>Buscar</label><input id="fQ" value="${esc(F.q)}" placeholder="Local, descrição…"></div>
     </div>
-    ${F.sub!=null||F.rev?`<p>${F.sub!=null?`<span class="tag">Subcategoria: ${esc(F.sub)}</span> `:""}${F.rev?'<span class="tag alerta">Só a conferir</span> ':""}<button class="btn mini sec" id="limpaF">Limpar filtros</button></p>`:""}
+    ${F.rev?`<p>${F.rev?'<span class="tag alerta">Só a conferir</span> ':""}<button class="btn mini sec" id="limpaF">Limpar filtros</button></p>`:""}
     <p class="sutil">${L.length} lançamentos · despesas ${brl(tot.D)} · receitas ${brl(tot.R)} · transferências ${brl(tot.T)}${L.length>500?" · mostrando os 500 primeiros":""}. Toque no título para ordenar e no status para avançar de etapa.</p>
     ${L.length?`<div class="rolagem"><table><thead><tr>${th("dp","Pagto")}${th("dc","Compra")}${th("l","Local")}${th("cat","Categoria")}${th("f","Conta")}${th("v","Valor",1)}${th("c","Status")}<th></th></tr></thead><tbody>
     ${mostra.map(l=>`<tr><td>${dataBR(l.dp)}</td><td class="sutil">${dataBR(l.dc)}</td>
@@ -649,6 +659,7 @@ function renderLanc(){
     </tbody></table></div>`:`<div class="vazio">${fe("vazio","xg")}<p>Nenhum lançamento com esses filtros.</p></div>`}</div>`;
   const liga=(id,k)=>$(id).addEventListener(id==="#fQ"?"input":"change",e=>{F[k]=e.target.value;if(k==="tp"||k==="cat")F.sub=null;if(k==="tp")F.cat="";renderLanc();if(id==="#fQ"){const i=$("#fQ");i.focus();i.setSelectionRange(i.value.length,i.value.length)}});
   [["#fPer","per"],["#fTp","tp"],["#fConta","conta"],["#fCat","cat"],["#fC","c"],["#fPq","pq"],["#fPj","pj"],["#fQ","q"]].forEach(a=>liga(...a));
+  $("#fSub").onchange=e=>{const v=e.target.value;if(!v)F.sub=null;else{const i=v.indexOf("|");F.cat=v.slice(0,i);F.sub=v.slice(i+1);if(!F.tp)F.tp="D"}renderLanc()};
   if($("#limpaF"))$("#limpaF").onclick=()=>{F.sub=null;F.rev=false;renderLanc()};
   if($("#verRev"))$("#verRev").onclick=()=>{Object.assign(F,{per:"todos",tp:"",conta:"",cat:"",sub:null,c:"",pq:"",pj:"",q:"",rev:true});renderLanc()};
   el.querySelectorAll("[data-ord]").forEach(b=>b.onclick=()=>{const k=b.dataset.ord;if(ORD.k===k)ORD.d*=-1;else{ORD.k=k;ORD.d=["dp","dc","v"].includes(k)?-1:1}renderLanc()});
