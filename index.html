@@ -370,6 +370,18 @@ const contaObj=n=>C().contas.find(c=>c.nome===n);
 const grupoDe=n=>(contaObj(n)||{}).grupo||"";
 const ehCartao=n=>grupoDe(n)==="cartao";
 const icConta=c=>c.icone||GRUPOS[c.grupo]?.ic||"corrente";
+const ordNome=(a,b)=>String(a).localeCompare(String(b),"pt-BR",{sensitivity:"base",numeric:true});
+const alfa=l=>[...l].sort(ordNome);
+const ehDin=n=>semAcento(n)==="dinheiro"||(contaObj(n)||{}).icone==="dinheiro";
+const nomesContas=soAtivas=>contas(soAtivas).map(c=>c.nome).sort((a,b)=>(ehDin(a)-ehDin(b))||ordNome(a,b));
+/* lista de contas em blocos por grupo (optgroup), cada bloco em ordem alfabética */
+function optsContas(sel,vazio,soAtivas){
+  const nomes=new Set(nomesContas(soAtivas));if(sel&&!nomes.has(sel)&&contaObj(sel))nomes.add(sel);
+  let h=vazio!=null?`<option value="">${vazio}</option>`:"";
+  for(const g of ORDEM_G){const ns=[...nomes].filter(n=>grupoDe(n)===g).sort((a,b)=>(ehDin(a)-ehDin(b))||ordNome(a,b));
+    if(ns.length)h+=`<optgroup label="${GRUPOS[g].nome}">${ns.map(n=>`<option ${n===sel?"selected":""}>${esc(n)}</option>`).join("")}</optgroup>`}
+  return h;
+}
 const catObj=n=>C().catD.find(c=>c.nome===n);
 const subsDe=n=>((catObj(n)||{}).subs||[]);
 function tipoSub(cat,sub){const c=catObj(cat);if(!c)return "V";const s=c.subs.find(x=>x.nome===sub);return (s&&s.tipo)||c.tipo||"V"}
@@ -613,17 +625,17 @@ function renderLanc(){
   if(F.q){const q=semAcento(F.q);L=L.filter(l=>semAcento(`${l.l} ${l.ds} ${l.cat} ${l.sub} ${l.f} ${l.fd||""}`).includes(q))}
   L.sort((a,b)=>{const x=chaveOrd(a,ORD.k),y=chaveOrd(b,ORD.k);const r=typeof x==="number"?x-y:String(x).localeCompare(String(y));return (r||String(b.dp).localeCompare(String(a.dp)))*ORD.d});
   const tot={D:0,R:0,T:0};L.forEach(l=>tot[l.tp]+=l.v);const mostra=L.slice(0,500);const nRev=dados().filter(l=>l.revisar).length;
-  const cats=F.tp==="R"?C().catR.map(c=>c.nome):C().catD.map(c=>c.nome);
+  const cats=F.tp==="R"?alfa(C().catR.map(c=>c.nome)):alfa(C().catD.map(c=>c.nome));
   const th=(k,t,v)=>`<th class="ord${v?" v":""}" ${ORD.k===k?`aria-sort="${ORD.d>0?"ascending":"descending"}"`:""}><button data-ord="${k}">${t} <span aria-hidden="true">${ORD.k===k?(ORD.d>0?"▲":"▼"):"↕"}</span></button></th>`;
   el.innerHTML=`${nRev?`<div class="aviso">${fe("alerta","p")} ${nRev} lançamento(s) da migração precisam de conferência (transferência sem conta de origem ou destino definida). <button class="btn mini sec" id="verRev">Ver</button></div>`:""}
   <div class="painel"><div class="filtros">
       <div><label>Período</label><select id="fPer"><option value="mes" ${F.per==="mes"?"selected":""}>${mesLabel(S.mes)}</option><option value="ano" ${F.per==="ano"?"selected":""}>Ano ${Y}</option><option value="todos" ${F.per==="todos"?"selected":""}>Tudo</option></select></div>
       <div><label>Tipo</label><select id="fTp"><option value="">Todos</option>${[["D","Despesas"],["R","Receitas"],["T","Transferências"]].map(([v,t])=>`<option value="${v}" ${F.tp===v?"selected":""}>${t}</option>`).join("")}</select></div>
-      <div><label>Conta</label><select id="fConta">${opts(contas().map(c=>c.nome),F.conta,"Todas")}</select></div>
+      <div><label>Conta</label><select id="fConta">${optsContas(F.conta,"Todas",false)}</select></div>
       <div><label>Categoria</label><select id="fCat">${opts(cats,F.cat,"Todas")}</select></div>
       <div><label>Status</label><select id="fC"><option value="">Todos</option>${STATUS.map((s,i)=>`<option value="${i}" ${F.c===String(i)?"selected":""}>${s}</option>`).join("")}</select></div>
-      <div><label>Para quem</label><select id="fPq">${opts(C().pessoas,F.pq,"Todos")}</select></div>
-      <div><label>Projeto</label><select id="fPj">${opts(C().projetos,F.pj,"Todos")}</select></div>
+      <div><label>Para quem</label><select id="fPq">${opts(alfa(C().pessoas),F.pq,"Todos")}</select></div>
+      <div><label>Projeto</label><select id="fPj">${opts(alfa(C().projetos),F.pj,"Todos")}</select></div>
       <div><label>Buscar</label><input id="fQ" value="${esc(F.q)}" placeholder="Local, descrição…"></div>
     </div>
     ${F.sub!=null||F.rev?`<p>${F.sub!=null?`<span class="tag">Subcategoria: ${esc(F.sub)}</span> `:""}${F.rev?'<span class="tag alerta">Só a conferir</span> ':""}<button class="btn mini sec" id="limpaF">Limpar filtros</button></p>`:""}
@@ -646,22 +658,22 @@ function renderLanc(){
 
 /* ========= formulário ========= */
 function camposForm(l,modo){
-  const ativos=contas(true).map(c=>c.nome);const tipoSel=`<div><label>Tipo</label><select data-k="tp">${[["D","Despesa"],["R","Receita"],["T","Transferência entre contas"]].map(([v,t])=>`<option value="${v}" ${l.tp===v?"selected":""}>${t}</option>`).join("")}</select></div>`;
+  const ativos=nomesContas(true);const tipoSel=`<div><label>Tipo</label><select data-k="tp">${[["D","Despesa"],["R","Receita"],["T","Transferência entre contas"]].map(([v,t])=>`<option value="${v}" ${l.tp===v?"selected":""}>${t}</option>`).join("")}</select></div>`;
   const status=`<div><label>Status</label><select data-k="c">${STATUS.map((s,i)=>`<option value="${i}" ${l.c===i?"selected":""}>${s}</option>`).join("")}</select></div>`;
-  const pessoaProj=`<div><label>Para quem</label><select data-k="pq">${opts(C().pessoas,l.pq||"Família")}</select></div>
-    <div><label>Projeto (opcional)</label><input data-k="pj" list="dlProj" value="${esc(l.pj)}" placeholder="Ex.: Reforma, Viagem"><datalist id="dlProj">${C().projetos.map(p=>`<option value="${esc(p)}">`).join("")}</datalist></div>`;
+  const pessoaProj=`<div><label>Para quem</label><select data-k="pq">${opts(alfa(C().pessoas),l.pq||"Família")}</select></div>
+    <div><label>Projeto (opcional)</label><input data-k="pj" list="dlProj" value="${esc(l.pj)}" placeholder="Ex.: Reforma, Viagem"><datalist id="dlProj">${alfa(C().projetos).map(p=>`<option value="${esc(p)}">`).join("")}</datalist></div>`;
   if(l.tp==="T")return `<div class="form">${tipoSel}
     <div><label>Data</label><input type="date" data-k="dp" value="${esc(l.dp||l.dc)}"></div>
     <div><label>Valor (R$)</label><input type="number" step="0.01" inputmode="decimal" data-k="v" value="${l.v??""}"></div>
-    <div><label>Sai da conta</label><select data-k="f">${opts(ativos,l.f,"Escolha")}</select></div>
-    <div><label>Entra na conta</label><select data-k="fd">${opts(ativos,l.fd,"Escolha")}</select></div>
+    <div><label>Sai da conta</label><select data-k="f">${optsContas(l.f,"Escolha",true)}</select></div>
+    <div><label>Entra na conta</label><select data-k="fd">${optsContas(l.fd,"Escolha",true)}</select></div>
     <div><label>Motivo</label><select data-k="mot">${opts(MOTIVOS,l.mot,"—")}</select></div>${status}
     <div class="largo"><label>Descrição (opcional)</label><input data-k="l" value="${esc(l.l)}" placeholder="Ex.: aporte mensal, parcela 9/18"></div>
     <p class="sutil largo">Transferências não contam como receita nem despesa: só mudam o dinheiro de lugar (pagamento de fatura, aportes, resgates, parcelas de empréstimo).</p></div>`;
-  const cats=l.tp==="R"?C().catR.filter(c=>c.ativo!==false).map(c=>c.nome):C().catD.filter(c=>c.ativo!==false).map(c=>c.nome);const subs=l.tp==="R"?[]:subsDe(l.cat).filter(s=>s.ativo!==false).map(s=>s.nome);
+  const cats=l.tp==="R"?alfa(C().catR.filter(c=>c.ativo!==false).map(c=>c.nome)):alfa(C().catD.filter(c=>c.ativo!==false).map(c=>c.nome));const subs=l.tp==="R"?[]:alfa(subsDe(l.cat).filter(s=>s.ativo!==false).map(s=>s.nome));
   return `<div class="form">${tipoSel}
     <div><label>Data da compra</label><input type="date" data-k="dc" value="${esc(l.dc)}"></div>
-    <div><label>Conta ou cartão</label><select data-k="f">${opts(ativos,l.f,"Escolha")}</select></div>
+    <div><label>Conta ou cartão</label><select data-k="f">${optsContas(l.f,"Escolha",true)}</select></div>
     <div><label>Valor (R$)</label><input type="number" step="0.01" inputmode="decimal" data-k="v" value="${l.v??""}"></div>
     <div class="largo"><label>Local / estabelecimento</label><input data-k="l" value="${esc(l.l)}"></div>
     <div><label>Categoria</label><select data-k="cat">${opts(cats,l.cat,"Escolha")}</select></div>
@@ -718,24 +730,24 @@ let REV=[];
 function lerColagem(){
   const txt=$("#colagem").value;const ini=txt.search(/[\[{]/),fim=Math.max(txt.lastIndexOf("]"),txt.lastIndexOf("}"));
   let arr;try{arr=JSON.parse(txt.slice(ini,fim+1))}catch{return toast("Não consegui ler o texto. Confira se colou a resposta completa da IA.")}
-  if(!Array.isArray(arr))arr=[arr];const nomes=contas(true).map(c=>c.nome);
+  if(!Array.isArray(arr))arr=[arr];const nomes=nomesContas(true);
   REV=arr.map(x=>{const dc=(String(x.data_compra||"").match(/^\d{4}-\d{2}-\d{2}/)||[hojeISO()])[0];const v=r2(Math.abs(+String(x.valor).replace(",",".")));
     if(/transf/i.test(x.tipo||""))return {tp:"T",dc,dp:dc,v,f:casar(x.conta,nomes),fd:casar(x.conta_destino,nomes),l:limpa(x.estabelecimento||x.descricao),ds:"",c:2,cat:"",sub:"",pq:"Família",pj:"",mot:casar(x.motivo,MOTIVOS),o:"ia",n:1};
-    const tp=/receita/i.test(x.tipo||"")?"R":"D";const cats=tp==="R"?C().catR.map(c=>c.nome):C().catD.map(c=>c.nome);const cat=casar(x.categoria,cats);const f=casar(x.conta,nomes);
+    const tp=/receita/i.test(x.tipo||"")?"R":"D";const cats=tp==="R"?alfa(C().catR.map(c=>c.nome)):alfa(C().catD.map(c=>c.nome));const cat=casar(x.categoria,cats);const f=casar(x.conta,nomes);
     return {tp,dc,f,v,n:+x.parcelas||1,l:limpa(x.estabelecimento),cat,sub:tp==="R"?"":casar(x.subcategoria,subsDe(cat).map(s=>s.nome)),ds:limpa(x.descricao),c:confPadrao(f),pq:casar(x.para_quem,C().pessoas)||"Família",pj:limpa(x.projeto),o:"ia"}});
   renderRevisao();
 }
 function renderRevisao(){
-  const nomes=contas(true).map(c=>c.nome);
+  const nomes=nomesContas(true);
   $("#revisao").innerHTML=REV.length?`<h3 style="margin-top:1rem">Confira antes de salvar</h3>${REV.map((r,i)=>`<div class="painel" data-rev="${i}" style="margin-top:.6rem;padding:.8rem">
     ${r.tp==="T"?`<div class="form"><div class="largo"><span class="tag">${fe("transf","p")} Transferência</span></div><div><label>Data</label><input type="date" data-k="dc" value="${esc(r.dc)}"></div><div><label>Valor</label><input type="number" step="0.01" data-k="v" value="${r.v}"></div>
-      <div><label>Sai da conta</label><select data-k="f">${opts(nomes,r.f,"Escolha")}</select></div><div><label>Entra na conta</label><select data-k="fd">${opts(nomes,r.fd,"Escolha")}</select></div></div>`:
+      <div><label>Sai da conta</label><select data-k="f">${optsContas(r.f,"Escolha",true)}</select></div><div><label>Entra na conta</label><select data-k="fd">${optsContas(r.fd,"Escolha",true)}</select></div></div>`:
     `<div class="form"><div class="largo"><label>Local</label><input data-k="l" value="${esc(r.l)}"></div><div><label>Data da compra</label><input type="date" data-k="dc" value="${esc(r.dc)}"></div>
       <div><label>Valor total</label><input type="number" step="0.01" data-k="v" value="${r.v}"></div><div><label>Parcelas</label><input type="number" min="1" data-k="n" value="${r.n}"></div>
-      <div><label>Conta ou cartão</label><select data-k="f">${opts(nomes,r.f,"Escolha")}</select></div>
-      <div><label>Categoria</label><select data-k="cat">${opts(r.tp==="R"?C().catR.map(c=>c.nome):C().catD.map(c=>c.nome),r.cat,"Escolha")}</select></div>
-      <div><label>Subcategoria</label><select data-k="sub">${opts(r.tp==="R"?[]:subsDe(r.cat).map(s=>s.nome),r.sub,"—")}</select></div>
-      <div><label>Para quem</label><select data-k="pq">${opts(C().pessoas,r.pq)}</select></div></div>`}
+      <div><label>Conta ou cartão</label><select data-k="f">${optsContas(r.f,"Escolha",true)}</select></div>
+      <div><label>Categoria</label><select data-k="cat">${opts(r.tp==="R"?alfa(C().catR.map(c=>c.nome)):alfa(C().catD.map(c=>c.nome)),r.cat,"Escolha")}</select></div>
+      <div><label>Subcategoria</label><select data-k="sub">${opts(r.tp==="R"?[]:alfa(subsDe(r.cat).map(s=>s.nome)),r.sub,"—")}</select></div>
+      <div><label>Para quem</label><select data-k="pq">${opts(alfa(C().pessoas),r.pq)}</select></div></div>`}
     <p class="sutil">${r.ds?esc(r.ds)+". ":""}${r.tp==="T"?"":(()=>{const p=calcularPagto(r.f,r.dc);return `Entra em ${mesLabel(p.m)}`+(r.n>1?`, primeira de ${r.n} parcelas de ${brl(r.v/r.n)}`:"")})()}</p></div>`).join("")}
   <div class="acoes"><button class="btn" id="btnSalvarRev">${fe("conferido","p")} Salvar ${REV.length>1?REV.length+" lançamentos":"lançamento"}</button><button class="btn sec" id="btnDescartar">Descartar</button></div>`:"";
   if(!REV.length)return;
@@ -798,7 +810,7 @@ Empréstimos: ${porG("emprestimo")}
 Categorias de despesa (categoria: subcategorias):
 ${cats}
 
-Categorias de receita: ${C().catR.filter(c=>c.ativo!==false).map(c=>c.nome).join("; ")}`;
+Categorias de receita: ${alfa(C().catR.filter(c=>c.ativo!==false).map(c=>c.nome)).join("; ")}`;
 }
 function renderIA(){
   $("#aba-ia").innerHTML=`<div class="painel"><div class="cab"><h2>${fe("ia")} Prompt para ChatGPT, Gemini ou Claude</h2><button class="btn" id="btnCopiarPrompt">Copiar prompt</button></div>
@@ -818,7 +830,7 @@ function mediaCat(c){const k=CACHE?dados().length+"|"+CORTE():"";if(MEDIAS_K!==k
   if(MEDIAS[c]==null){const ult=Array.from({length:12},(_,i)=>addMes(MES_HOJE,-12+i));MEDIAS[c]=ult.reduce((t,m)=>t+totD(m,c),0)/12}return MEDIAS[c]}
 function previsaoMes(m){
   const pr=progPor(m),metas=O().metas[m]||{};let desp=pr.Dsem;const futuro=m>MES_HOJE;
-  const cats=new Set([...C().catD.map(c=>c.nome),...Object.keys(metas),...Object.keys(pr.D)]);
+  const cats=new Set([...alfa(C().catD.map(c=>c.nome)),...Object.keys(metas),...Object.keys(pr.D)]);
   for(const c of cats){const alvo=metas[c]!=null?metas[c]:(futuro?mediaCat(c):0);desp+=Math.max(alvo,totD(m,c)+(pr.D[c]||0))}
   return {rec:totR(m)+pr.R,desp,tout:guardado(m)+pr.Tout,prog:pr}
 }
