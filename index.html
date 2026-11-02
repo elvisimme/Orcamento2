@@ -97,6 +97,8 @@ main{padding:1.5rem 2rem 3rem}
 .kpi small{display:block;color:var(--tinta2);font-size:.82rem;font-weight:600}
 .kpi strong{display:block;font-family:Nunito,sans-serif;font-size:1.32rem;font-weight:800;line-height:1.25;white-space:nowrap}
 .kpi .sutil{display:block;margin-top:.15rem}
+.kpi .previsto{display:block;margin-top:.4rem;padding-top:.35rem;border-top:1px dashed var(--linha);font-size:.8rem;color:var(--tinta2)}
+.kpi .previsto b{color:var(--tinta)}
 @media (max-width:600px){.kpis{grid-template-columns:1fr 1fr;gap:.6rem}.kpi{flex-direction:column;gap:.35rem;padding:.75rem}.kpi strong{font-size:1.05rem}}
 .neg{color:var(--despesa)} .pos{color:var(--receita)} .sutil{color:var(--tinta2);font-size:.86rem}
 .cab{display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem}
@@ -246,6 +248,9 @@ const dataBR=d=>d?d.split("-").reverse().join("/"):"";
 const diaValido=(y,m,d)=>Math.min(d,new Date(y,m,0).getDate());
 const clone=o=>JSON.parse(JSON.stringify(o));
 function fe(k,cls="",alt=""){const src=FE[k]||FE.outras;return `<img class="fe ${cls}" src="${src}" alt="${esc(alt)}" ${alt?"":'aria-hidden="true"'}>`}
+function escolher(titulo,texto,opcoes){return new Promise(ok=>{const d=document.createElement("dialog");
+  d.innerHTML=`<h2>${titulo}</h2><p>${texto}</p><div class="escolhas">${opcoes.map((o,i)=>`<button class="btn ${i?"sec":""}" data-i="${i}">${o}</button>`).join("")}</div>`;
+  document.body.appendChild(d);d.showModal();d.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{d.close();d.remove();ok(+b.dataset.i)});d.addEventListener("cancel",()=>{d.remove();ok(opcoes.length-1)})})}
 function toast(msg,ms=3400){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),ms)}
 function confete(){const box=document.createElement("div");box.className="confete";const cores=["#F4C430","#2E8A57","#3C78C8","#D2553F","#E08A1E","#8E52A8"];
   for(let i=0;i<60;i++){const c=document.createElement("i");c.style.left=Math.random()*100+"vw";c.style.background=cores[i%cores.length];c.style.animationDelay=Math.random()*.5+"s";c.style.transform=`rotate(${Math.random()*360}deg)`;box.appendChild(c)}
@@ -272,7 +277,8 @@ const S={base:[],pend:[],cad:null,hist:null,orc:null,mes:MES_HOJE,usuario:"local
 const CAD_VAZIO={contas:[],catD:[],catR:[],pessoas:["Família"],projetos:[]};
 const HIST_VAZIO={ate:null,despesas:{},receitas:{},transferencias:{},saldos:{}};
 const ORC_VAZIO={metas:{},programados:[]};
-function visao(){const mapa=new Map(S.base.map(l=>[l.id,l]));[...S.pend].sort((a,b)=>(a.u||0)-(b.u||0)).forEach(p=>{if(p.x)mapa.delete(p.id);else mapa.set(p.id,p)});return [...mapa.values()]}
+function visao(){const mapa=new Map(S.base.map(l=>[l.id,l]));[...S.pend].sort((a,b)=>(a.u||0)-(b.u||0)).forEach(p=>{if(p.x)mapa.delete(p.id);else mapa.set(p.id,p)});
+  return [...mapa.values()].map(l=>l.dp&&/^\d{4}-\d{2}/.test(l.dp)&&l.dp.slice(0,7)!==l.m?{...l,m:l.dp.slice(0,7)}:l)}
 let CACHE=null,IDX=null;const invalida=()=>{CACHE=null;IDX=null};const dados=()=>CACHE||(CACHE=visao());
 const C=()=>S.cad||CAD_VAZIO,H=()=>S.hist||HIST_VAZIO,O=()=>S.orc||ORC_VAZIO;
 const CORTE=()=>H().ate?addMes(H().ate,1):"0000-00";
@@ -388,6 +394,12 @@ function tipoSub(cat,sub){const c=catObj(cat);if(!c)return "V";const s=c.subs.fi
 const icCat=n=>(catObj(n)||{}).icone||"outras";
 const icRec=n=>(C().catR.find(c=>c.nome===n)||{}).icone||"outras";
 
+/* ========= metas: por categoria ("Cat") ou por subcategoria ("Cat|Sub") ========= */
+const metasDe=m=>O().metas[m]||{};
+const temMetaSub=(m,c)=>Object.keys(metasDe(m)).some(k=>k.startsWith(c+"|"));
+function metaCat(m,c){const mt=metasDe(m);if(temMetaSub(m,c))return Object.entries(mt).filter(([k])=>k.startsWith(c+"|")).reduce((a,[,v])=>a+v,0);return mt[c]}
+const metaSub=(m,c,s)=>metasDe(m)[c+"|"+s];
+
 /* ========= regras: mês da fatura, parcelas ========= */
 function calcularPagto(conta,dc){
   if(!dc)dc=hojeISO();const[y,m,d]=dc.split("-").map(Number);const mc=`${y}-${p2(m)}`;
@@ -399,7 +411,8 @@ function calcularPagto(conta,dc){
 const confPadrao=conta=>grupoDe(conta)==="cartao"?0:2;
 function gerarParcelas(base,n){
   n=Math.max(1,Math.min(60,+n||1));const total=Math.round(base.v*100),parc=Math.floor(total/n);const out=[];const g=n>1?"g"+novoId().slice(1):undefined;
-  const {m,dp}=base.tp==="D"||base.tp==="R"?calcularPagto(base.f,base.dc):{m:base.dc.slice(0,7),dp:base.dc};
+  // respeita a data de pagamento informada (ex.: fatura antecipada por feriado); sem ela, usa a regra do cartão
+  const {m,dp}=base.dp?{m:base.dp.slice(0,7),dp:base.dp}:(base.tp==="D"||base.tp==="R"?calcularPagto(base.f,base.dc):{m:base.dc.slice(0,7),dp:base.dc});
   for(let i=0;i<n;i++){const v=(i===n-1?total-parc*(n-1):parc)/100;const mi=addMes(m,i);const[yy,mm]=mi.split("-").map(Number);
     out.push({...base,id:novoId(),g,pi:n>1?i+1:undefined,pn:n>1?n:undefined,v,m:mi,dp:`${mi}-${p2(diaValido(yy,mm,+dp.slice(8,10)))}`,l:n>1?`${base.l} ${p2(i+1)}/${p2(n)}`:base.l,c:i===0?base.c:0})}
   return out;
@@ -442,7 +455,9 @@ function saldosMes(m){
     if(!c.mes||m<c.mes){const fim=(hs[c.nome]||{})[m];return {c:c.nome,o:c,grupo:c.grupo,hist:true,fim:fim==null?null:fim}}
     let ini=+c.ini||0;for(let k=c.mes;k<m;k=addMes(k,1))ini+=((I.mov[c.nome]||{})[k]||{}).all||0;
     const o=(I.mov[c.nome]||{})[m]||{all:0,c2:0,ent:0,sai:0};const inf=((C().informados||{})[c.nome]||{})[m];
-    return {c:c.nome,o:c,grupo:c.grupo,ini,ent:o.ent,sai:o.sai,real:ini+o.c2,prev:ini+o.all,fim:ini+o.all,inf};
+    const r={c:c.nome,o:c,grupo:c.grupo,ini,ent:o.ent,sai:o.sai,real:ini+o.c2,prev:ini+o.all,fim:ini+o.all,inf};
+    if(c.grupo==="cartao")Object.assign(r,{aberto:ini<-0.005?ini:0,ini:0,real:o.c2,prev:o.all});  // exibição: só o movimento do mês
+    return r;
   });
 }
 function resumoSaldos(m){
@@ -488,26 +503,30 @@ function renderPainel(){
   if(!S.cad){el.innerHTML=`<div class="painel vazio">${fe("vazio","xg")}<h2>Vamos começar?</h2><p>Em <b>Ajustes</b>, importe a carga inicial (o arquivo <b>carga_inicial_orcamento2.json</b>) para trazer contas, histórico e lançamentos.</p><button class="btn" onclick="irAba('ajustes')">${fe("ajustes","p")} Abrir Ajustes</button></div>`;return}
   const M=S.mes,MA=addMes(M,-12);
   const rec=totR(M),desp=totD(M),res=rec-desp,gd=guardado(M),RS=resumoSaldos(M),RSa=resumoSaldos(addMes(M,-1));const tp=tipoMes(M),tpT=tp.E+tp.V+tp.F||1;
-  const metasM=O().metas[M]||{};const orcT=Object.values(metasM).reduce((a,b)=>a+b,0);const despOrc=Object.keys(metasM).reduce((a,c)=>a+totD(M,c),0);
+  const catsMeta=C().catD.map(x=>x.nome).filter(n=>metaCat(M,n)!=null);const orcT=catsMeta.reduce((t,n)=>t+metaCat(M,n),0);const despOrc=catsMeta.reduce((t,n)=>t+totD(M,n),0);
+  const prevMes=M>=MES_HOJE?projecao([M])[M]:null;
+  const pv=(real,prev,bom)=>{if(!prevMes)return "";const d=prev-real;const seta=Math.abs(d)<0.5?"":(d>0)===bom?' <span class="pos">▲</span>':' <span class="neg">▼</span>';return `<span class="previsto">Previsto no fim do mês: <b>${brl(prev)}</b>${seta}</span>`};
+  const resPrev=prevMes?prevMes.rec-prevMes.desp:0,patPrev=prevMes?RS.pat+(prevMes.rec-rec)-(prevMes.desp-desp):0;
   const kpis=`<div class="kpis">
-    ${kpi("receitas","Receitas do mês",brl(rec),"pos")}
-    ${kpi("despesas","Despesas do mês",brl(desp),"neg",orcT?`${(despOrc/orcT*100).toFixed(0)}% do orçado nas categorias com meta`:"")}
-    ${kpi("resultado","Resultado do mês",brl(res),res>=0?"pos":"neg",rec?`Taxa de poupança: ${(res/rec*100).toFixed(1)}%`:"")}
-    ${kpi("guardado","Guardado no mês",brl(gd),"","Aportes em aplicações, reservas e amortização de empréstimos")}
-    ${kpi("saldo","Disponível (contas + cartões)",brl(RS.liq),RS.liq<0?"neg":"",`Variação no mês: ${RS.liq-RSa.liq>=0?"+":""}${brl(RS.liq-RSa.liq)}`)}
-    ${kpi("patrimonio","Patrimônio líquido",brl(RS.pat),RS.pat<0?"neg":"",`${RS.pat-RSa.pat>=0?"+":""}${brl(RS.pat-RSa.pat)} no mês`)}
+    ${kpi("receitas","Receitas do mês",brl(rec),"pos",pv(rec,prevMes&&prevMes.rec,true))}
+    ${kpi("despesas","Despesas do mês",brl(desp),"neg",(orcT?`${(despOrc/orcT*100).toFixed(0)}% do orçado nas categorias com meta`:"")+pv(desp,prevMes&&prevMes.desp,false))}
+    ${kpi("resultado","Resultado do mês",brl(res),res>=0?"pos":"neg",(rec?`Taxa de poupança: ${(res/rec*100).toFixed(1)}%`:"")+pv(res,resPrev,true))}
+    ${kpi("guardado","Guardado no mês",brl(gd),"",pv(gd,prevMes&&prevMes.tout,true)||"Aportes em aplicações, reservas e amortização de empréstimos")}
+    ${kpi("saldo","Disponível (contas + cartões)",brl(RS.liq),RS.liq<0?"neg":"",pv(RS.liq,prevMes&&prevMes.liq,true)||`Variação no mês: ${RS.liq-RSa.liq>=0?"+":""}${brl(RS.liq-RSa.liq)}`)}
+    ${kpi("patrimonio","Patrimônio líquido",brl(RS.pat),RS.pat<0?"neg":"",pv(RS.pat,patPrev,true)||`${RS.pat-RSa.pat>=0?"+":""}${brl(RS.pat-RSa.pat)} no mês`)}
   </div>`;
   const cardTipo=`<div class="painel"><div class="cab"><h2>${fe("resultado")} Para onde foi o dinheiro em ${mesLabel(M)}</h2></div>
     <div class="esteira">${["E","V","F"].map(t=>`<div class="t-${t}" style="flex-grow:${tp[t]/tpT}" title="${TIPOS_GASTO[t]}: ${brl(tp[t])}">${tp[t]/tpT>.12?`${(tp[t]/tpT*100).toFixed(0)}%`:""}</div>`).join("")}</div>
     <div class="legenda">${["E","V","F"].map(t=>`<span><i class="t-${t}"></i>${TIPOS_GASTO[t]}: <b>${brl(tp[t])}</b></span>`).join("")}</div>
     <p class="sutil" style="margin-bottom:0">Referência da regra 50/30/20: até 50% da renda no essencial e até 30% em estilo de vida. Neste mês, o essencial foi ${rec?(tp.E/rec*100).toFixed(0):0}% e o estilo de vida ${rec?(tp.V/rec*100).toFixed(0):0}% das receitas.</p></div>`;
-  el.innerHTML=`${kpis}${cardContas(M)}<div class="colunas"><div>${cardAno(M)}${cardMetas(M)}</div><div>${cardTipo}${cardCategorias(M,MA)}</div></div>`;
+  el.innerHTML=`${kpis}${cardFluxo(M)}${cardContas(M)}<div class="colunas"><div>${cardMetas(M)}${cardTipo}</div><div>${cardCategorias(M,MA)}</div></div>`;
   ligarPeriodo(el);
   el.querySelectorAll("[data-irmes]").forEach(a=>a.onclick=e=>{e.preventDefault();S.mes=a.dataset.irmes;renderTudo()});
   el.querySelectorAll("[data-abre]").forEach(b=>b.onclick=()=>{const c=b.dataset.abre;ABERTAS.has(c)?ABERTAS.delete(c):ABERTAS.add(c);renderPainel()});
   el.querySelectorAll("[data-fsub]").forEach(a=>a.onclick=e=>{e.preventDefault();filtrarCat(a.dataset.fcat,a.dataset.fsub,M)});
   el.querySelectorAll("[data-inf]").forEach(i=>i.onchange=async()=>{i.disabled=true;try{await informarSaldo(i.dataset.inf,M,i.value===""?null:parseFloat(i.value))}catch(x){toast(x.message);i.disabled=false}});
-  el.querySelectorAll("[data-pagar]").forEach(b=>b.onclick=()=>pagarFatura(b.dataset.pagar,M));
+  el.querySelectorAll("[data-pagar]").forEach(b=>b.onclick=()=>pagarFatura(b.dataset.pagar,M,+b.dataset.valor,b.dataset.rot));
+  el.querySelectorAll("[data-fluxo]").forEach(b=>b.onclick=()=>{FLUXO=b.dataset.fluxo;renderPainel()});
 }
 function cardContas(M){
   const sal=saldosMes(M);const temHist=sal.some(s=>s.hist);
@@ -516,7 +535,8 @@ function cardContas(M){
     const nome=`<span class="nome">${fe(icConta(c),"p")}${esc(c.nome)}${pend}</span>`;
     if(s.hist)return `<tr><td>${nome}</td><td colspan="4" class="sutil">Histórico (antes de ${mesLabel(c.mes)})</td><td class="v"><b>${s.fim==null?"–":brl(s.fim)}</b></td><td></td><td></td></tr>`;
     const aj=dados().find(l=>l.id===idAjuste(c.nome,M));let conf="";
-    if(c.grupo==="cartao"){const fat=-s.prev;conf=fat>0.005?`<button class="btn mini" data-pagar="${esc(c.nome)}">${fe("cartao","p")} Pagar ${brl(fat)}</button>`:`<span class="pos">${fe("conferido","p")} fatura paga</span>`}
+    if(c.grupo==="cartao"){const fat=-s.prev;conf=fat>0.005?`<button class="btn mini" data-pagar="${esc(c.nome)}" data-valor="${r2(fat)}" data-rot="fatura de ${mesLabel(M)}">${fe("cartao","p")} Pagar ${brl(fat)}</button>`:`<span class="pos">${fe("conferido","p")} ${fat<-0.005?"crédito":"fatura paga"}</span>`;
+      if(s.aberto&&M<=MES_HOJE)conf+=`<div style="margin-top:.3rem"><button class="btn mini perigo" data-pagar="${esc(c.nome)}" data-valor="${r2(-s.aberto)}" data-rot="fatura(s) anterior(es) em aberto" title="Fatura de mês anterior sem pagamento registrado">${fe("alerta","p")} Anterior em aberto ${brl(-s.aberto)}</button></div>`}
     else if(aj)conf=`<span class="tag">${c.grupo==="emprestimo"?"juros":aj.v>=0?"rendimento":"perda"} ${brl(Math.abs(aj.v))}</span>`;
     else if(s.inf!=null)conf=difHtml(s.inf-(c.grupo==="corrente"?s.real:s.prev));
     const ph=c.grupo==="emprestimo"?"saldo devedor":c.grupo==="corrente"?"extrato":c.grupo==="cartao"?"":"saldo atual";
@@ -531,7 +551,7 @@ function cardContas(M){
     return `<tbody><tr class="grupo"><td><span class="nome">${fe(GRUPOS[g].ic)}${GRUPOS[g].nome}</span></td><td class="v">${brl(tot("ini"))}</td><td></td><td></td><td class="v">${brl(tot("real"))}</td><td class="v">${brl(tot("prev"))}</td><td></td><td></td></tr>${arr.map(linha).join("")}</tbody>`}).join("");
   const RS=resumoSaldos(M);
   return `<div class="painel rolagem"><div class="cab"><h2>${fe("corrente")} Saldos em ${mesLabel(M)}</h2><span class="sutil">Disponível ${brl(RS.liq)} · Patrimônio ${brl(RS.pat)}</span></div>
-    <p class="sutil">Realizado = só conferidos. Previsto = tudo o que foi lançado no mês. Em aplicações e reservas, o saldo informado gera o rendimento; em empréstimos a pagar, o saldo devedor informado gera os juros.${temHist?" Meses antes de out/2026 mostram o saldo final do histórico.":""}</p>
+    <p class="sutil">Realizado = só conferidos. Previsto = tudo o que foi lançado no mês. Cartões mostram só a fatura do mês. Em aplicações e reservas, o saldo informado gera o rendimento; em empréstimos a pagar, o saldo devedor informado gera os juros.${temHist?" Meses antes de out/2026 mostram o saldo final do histórico.":""}</p>
     <table class="contas"><thead><tr><th>Conta</th><th class="v">Saldo inicial</th><th class="v">Entradas</th><th class="v">Saídas</th><th class="v">Realizado</th><th class="v">Previsto fim do mês</th><th class="v">Informado</th><th class="v">Conferência</th></tr></thead>${corpo}
     <tfoot><tr><th>Patrimônio líquido</th><th></th><th></th><th></th><th></th><th class="v">${brl(RS.pat)}</th><th></th><th></th></tr></tfoot></table></div>`;
 }
@@ -548,8 +568,13 @@ async function informarSaldo(conta,M,valor){
     const[y,mm]=M.split("-").map(Number);const dia=`${M}-${p2(new Date(y,mm,0).getDate())}`;
     if(Math.abs(aj)<0.005){if(atual)await salvar([{id,x:1}])}
     else{
-      const txt=c.grupo==="emprestimo"?`Lançar juros de ${brl(-aj)} em “${conta}”?`:`Lançar ${aj>=0?"rendimento":"perda"} de ${brl(Math.abs(aj))} em “${conta}”?`;
-      if(!confirm(txt+"\n\nÉ a diferença entre o saldo informado e o saldo calculado pela plataforma."))return renderPainel();
+      const nomeAj=c.grupo==="emprestimo"?`juros de ${brl(-aj)}`:`${aj>=0?"rendimento":"perda"} de ${brl(Math.abs(aj))}`;
+      const op=await escolher(`${fe(c.grupo==="emprestimo"?"emprestimo":"aplicacao")} ${esc(conta)}`,`O saldo informado difere do calculado em <b>${brl(aj)}</b>.${M===c.mes?" Como este é o primeiro mês da conta na plataforma, a diferença pode ser só um saldo inicial desatualizado.":""}`,
+        [`Lançar como ${nomeAj} do mês`,"É correção do saldo inicial (não entra como receita/despesa)","Cancelar"]);
+      if(op===2)return renderPainel();
+      if(op===1){const i=cad.contas.findIndex(x=>x.nome===conta);
+        // leva a diferença para o saldo inicial no mês de início da conta
+        cad.contas[i].ini=r2((+cad.contas[i].ini||0)+aj);if(atual)await salvar([{id,x:1}]);await B().gravarDoc("cadastros",cad);invalida();renderPainel();return toast(`Saldo inicial de “${conta}” ajustado em ${brl(aj)}.`,5000)}
       if(c.grupo==="emprestimo")await salvar([{id,tp:"D",dc:dia,dp:dia,m:M,f:conta,v:-aj,c:2,l:`Juros ${conta}`,cat:"Financeiro",sub:"Juros de empréstimos",ds:"Calculado pelo saldo devedor informado",pq:"Família",o:"auto"}]);
       else await salvar([{id,tp:"R",dc:dia,dp:dia,m:M,f:conta,v:aj,c:2,l:`Rendimento ${conta}`,cat:"Rendimentos de aplicações",sub:"",ds:"Calculado pelo saldo informado",pq:"Família",o:"auto"}]);
     }
@@ -557,12 +582,12 @@ async function informarSaldo(conta,M,valor){
   await B().gravarDoc("cadastros",cad);invalida();renderPainel();
   const s2=saldosMes(M).find(x=>x.c===conta);if(c.grupo==="corrente"&&Math.abs(valor-s2.real)<0.005){toast(`${conta}: bateu com o extrato!`);confete()}
 }
-function pagarFatura(cartao,M){
-  const s=saldosMes(M).find(x=>x.c===cartao);const valor=r2(-s.prev);const c=contaObj(cartao);
+function pagarFatura(cartao,M,valorDef,rotulo){
+  const s=saldosMes(M).find(x=>x.c===cartao);const valor=r2(valorDef||-s.prev);const c=contaObj(cartao);rotulo=rotulo||`fatura de ${mesLabel(M)}`;
   const correntes=contas(true).filter(x=>x.grupo==="corrente").map(x=>x.nome);
   const ult=dados().filter(l=>l.tp==="T"&&l.fd===cartao&&l.f).sort((a,b)=>(b.dp||"").localeCompare(a.dp||""))[0];
   const[y,mm]=M.split("-").map(Number);const dp=`${M}-${p2(diaValido(y,mm,+c.venc||10))}`;
-  $("#dlgCorpo").innerHTML=`<h2>${fe("cartao")} Pagar fatura de ${mesLabel(M)}</h2><p><b>${esc(cartao)}</b>: fatura de <b>${brl(valor)}</b>. O pagamento vira uma transferência da conta corrente para o cartão, que volta a ficar zerado.</p>
+  $("#dlgCorpo").innerHTML=`<h2>${fe("cartao")} Pagar ${esc(rotulo)}</h2><p><b>${esc(cartao)}</b>: <b>${brl(valor)}</b>. O pagamento vira uma transferência da conta corrente para o cartão, que volta a ficar zerado.</p>
     <div class="form"><div><label>Pagar com a conta</label><select id="pfConta">${correntes.map(n=>`<option ${ult&&ult.f===n?"selected":""}>${esc(n)}</option>`).join("")}</select></div>
     <div><label>Data do pagamento</label><input type="date" id="pfData" value="${dp}"></div><div><label>Valor</label><input type="number" step="0.01" id="pfValor" value="${valor}"></div></div>
     <div class="acoes"><button class="btn" id="pfOk">${fe("conferido","p")} Registrar pagamento</button><button class="btn sec" id="pfCancel">Cancelar</button></div>`;
@@ -600,16 +625,66 @@ function cardAno(M){
     </tbody><tfoot><tr><th>Total</th><th class="v">${brl(T.r)}</th><th class="v">${brl(T.d)}</th><th class="v ${T.r-T.d<0?"neg":"pos"}">${brl(T.r-T.d)}</th><th></th></tr></tfoot></table></div></div>`;
 }
 function cardCategorias(M,MA){
-  const ult=Array.from({length:12},(_,i)=>addMes(M,-12+i));const metas=O().metas[M]||{};
-  const lin=(c,s)=>({r:totD(M,c,s),o:s==null?(metas[c]||0):0,a:totD(MA,c,s),med:ult.reduce((t,m)=>t+totD(m,c,s),0)/12});
+  const ult=Array.from({length:12},(_,i)=>addMes(M,-12+i));
+  const lin=(c,s)=>({r:totD(M,c,s),o:(s==null?metaCat(M,c):metaSub(M,c,s))||0,a:totD(MA,c,s),med:ult.reduce((t,m)=>t+totD(m,c,s),0)/12});
   const cats=C().catD.map(c=>({c:c.nome,...lin(c.nome)})).filter(x=>x.r||x.o||x.a||x.med).sort((a,b)=>b.r-a.r);
   const cel=x=>{const pct=x.o?x.r/x.o:0;return `<td class="v">${brl(x.r)}</td><td class="v">${x.o?brl(x.o):"–"}</td><td>${x.o?`<div class="barra" title="${(pct*100).toFixed(0)}%"><b class="${pct>1?"estouro":""}" style="width:${Math.min(pct,1)*100}%"></b></div>`:""}</td><td class="v sutil">${brl(x.a)}</td><td class="v sutil">${brl(x.med)}</td>`};
   return `<div class="painel rolagem"><div class="cab"><h2>${fe("despesas")} Despesas por categoria</h2><span class="sutil">Toque para abrir as subcategorias</span></div>
     <table><thead><tr><th>Categoria</th><th class="v">${mesCurto(M)}</th><th class="v">Orçado</th><th>Uso</th><th class="v">${mesCurto(MA)}</th><th class="v">Média 12m</th></tr></thead>
-    ${cats.map(x=>{const ab=ABERTAS.has(x.c);const subs=ab?subsDe(x.c).map(s=>({s:s.nome,...lin(x.c,s.nome)})).filter(y=>y.r||y.a||y.med).sort((a,b)=>b.r-a.r):[];
+    ${cats.map(x=>{const ab=ABERTAS.has(x.c);const subs=ab?subsDe(x.c).map(s=>({s:s.nome,...lin(x.c,s.nome)})).filter(y=>y.r||y.o||y.a||y.med).sort((a,b)=>b.r-a.r):[];
       return `<tbody><tr><td><button class="abre pula" data-abre="${esc(x.c)}" aria-expanded="${ab}">${ab?"▾":"▸"} ${fe(icCat(x.c),"p")} ${esc(x.c)}</button></td>${cel(x)}</tr>
       ${subs.map(y=>`<tr class="sub"><td><a href="#" data-fcat="${esc(x.c)}" data-fsub="${esc(y.s)}">${esc(y.s)}</a> <span class="sutil">· ${TIPOS_GASTO[tipoSub(x.c,y.s)]}</span></td>${cel(y)}</tr>`).join("")}</tbody>`}).join("")||`<tbody><tr><td colspan="6" class="vazio">${fe("vazio","g")}<br>Nenhuma despesa neste mês.</td></tr></tbody>`}
     </table></div>`;
+}
+
+/* ========= fluxo do disponível (total e por conta) ========= */
+let FLUXO="total";
+function pagadoraDe(cartao){const t=dados().filter(l=>l.tp==="T"&&l.fd===cartao&&l.f&&grupoDe(l.f)==="corrente").sort((a,b)=>(b.dp||"").localeCompare(a.dp||""))[0];return t?t.f:""}
+function projContas(MS){
+  const I=idx(),P=projecao([addMes(MS[0],-1),...MS]);const corr=contas().filter(c=>c.grupo==="corrente").map(c=>c.nome);
+  const cartoes=contas().filter(c=>c.grupo==="cartao").map(c=>c.nome);const pag=Object.fromEntries(cartoes.map(k=>[k,pagadoraDe(k)]));
+  const out={contas:Object.fromEntries(corr.map(c=>[c,{}])),sem:{},total:{}};let fimAnt=null;
+  for(const m of MS){
+    const sal=saldosMes(m);const real=n=>sal.find(x=>x.c===n)||{};
+    if(m<MES_HOJE){corr.forEach(c=>out.contas[c][m]=real(c).fim??null);out.total[m]=resumoSaldos(m).liq}
+    else{
+      const base={};corr.forEach(c=>{const r=real(c);base[c]=m===MES_HOJE||fimAnt==null?(r.hist?(r.fim||0):(r.ini||0)):fimAnt[c]});
+      const d=Object.fromEntries(corr.map(c=>[c,((I.mov[c]||{})[m]||{}).all||0]));
+      for(const p of pendentes(m)){const s=p.tp==="R"?1:-1;if(p.f&&d[p.f]!=null)d[p.f]+=p.tp==="T"?-p.v:s*p.v;if(p.tp==="T"&&p.fd&&d[p.fd]!=null)d[p.fd]+=p.v}
+      for(const k of cartoes){const r=real(k);const iniK=m===MES_HOJE?(r.aberto||0):0;const pagar=-(iniK+(((I.mov[k]||{})[m]||{}).all||0));if(pagar>0.005&&pag[k]&&d[pag[k]]!=null)d[pag[k]]-=pagar}
+      fimAnt={};corr.forEach(c=>{fimAnt[c]=base[c]+d[c];out.contas[c][m]=fimAnt[c]});out.total[m]=P[m].liq;
+    }
+    out.sem[m]=out.total[m]-corr.reduce((a,c)=>a+(out.contas[c][m]||0),0);
+  }
+  return out;
+}
+function cardFluxo(M){
+  const MS=mesesPeriodo();const P=projecao([addMes(MS[0],-1),...MS]);
+  const col=MS.map(m=>{const prev=m>=MES_HOJE;const ini=m<=MES_HOJE?resumoSaldos(addMes(m,-1)).liq:P[addMes(m,-1)].liq;
+    const fim=prev?P[m].liq:resumoSaldos(m).liq;const ent=prev?P[m].rec:totR(m);return {m,fut:m>MES_HOJE,ini,ent,sai:ini+ent-fim,fim}});
+  const mx=Math.max(1,...col.map(c=>Math.max(c.ent,c.sai)));
+  const barra=c=>{const H=110,hr=Math.max(0,c.ent)/mx*H,hs=Math.max(0,c.sai)/mx*H;return `<svg viewBox="0 0 60 ${H+4}" width="100%" height="${H+4}" preserveAspectRatio="none" style="display:block;opacity:${c.fut?.5:1}" role="img" aria-label="${mesLabel(c.m)}: entradas ${brl(c.ent)}, saídas ${brl(c.sai)}"><title>${mesLabel(c.m)}: entradas ${brl(c.ent)}, saídas ${brl(c.sai)}</title>
+    <rect x="8" y="${H-hr+2}" width="20" height="${hr}" rx="4" fill="var(--receita)" stroke="var(--contorno)" stroke-width="1.2"/><rect x="32" y="${H-hs+2}" width="20" height="${hs}" rx="4" fill="var(--despesa)" stroke="var(--contorno)" stroke-width="1.2"/></svg>`};
+  const cel=v=>`<td class="v ${v<0?"neg":""}">${v==null?"–":brl0(v)}</td>`;const hl=m=>m===M?'style="background:var(--amarelo-suave)"':"";
+  const quadrado=cor=>`<i style="display:inline-block;width:.8rem;height:.8rem;border-radius:3px;background:var(${cor});border:1px solid var(--contorno)"></i>`;
+  let corpo;
+  if(FLUXO==="contas"){const pc=projContas(MS);
+    const linhas=Object.keys(pc.contas).sort((a,b)=>(ehDin(a)-ehDin(b))||ordNome(a,b)).filter(c=>MS.some(m=>Math.abs(pc.contas[c][m]||0)>0.5)||(contaObj(c)||{}).ativo!==false);
+    corpo=`<tbody>${linhas.map(c=>`<tr><td><span class="nome">${fe(icConta(contaObj(c)),"p")}${esc(c)}</span></td>${MS.map(m=>cel(pc.contas[c][m])).join("")}</tr>`).join("")}
+      <tr><td><span class="nome">${fe("alerta","p")}Estimativas e itens sem conta</span></td>${MS.map(m=>cel(pc.sem[m])).join("")}</tr></tbody>
+      <tfoot><tr><th>Saldo final projetado</th>${MS.map(m=>`<th class="v ${pc.total[m]<0?"neg":""}" ${hl(m)}>${brl0(pc.total[m])}</th>`).join("")}</tr></tfoot>`;
+  }else corpo=`<tbody><tr><td><b>Saldo inicial</b></td>${col.map(c=>cel(c.ini)).join("")}</tr>
+      <tr><td><span class="nome">${quadrado("--receita")}Entradas</span></td>${col.map(c=>`<td class="v pos">${brl0(c.ent)}</td>`).join("")}</tr>
+      <tr><td><span class="nome">${quadrado("--despesa")}Saídas</span></td>${col.map(c=>`<td class="v neg">${brl0(-c.sai)}</td>`).join("")}</tr></tbody>
+      <tfoot><tr><th>Saldo final projetado</th>${col.map(c=>`<th class="v ${c.fim<0?"neg":""}" ${hl(c.m)}>${brl0(c.fim)}${c.fim<0&&c.fut?" "+fe("alerta","p"):""}</th>`).join("")}</tr></tfoot>`;
+  return `<div class="painel"><div class="cab"><h2>${fe("analise")} Fluxo do disponível · ${PER==="ano"?"Ano "+M.slice(0,4):PER_LBL[PER]}</h2>
+      <div class="acoes" style="margin:0"><div class="segmentos">${[["total","Total"],["contas","Por conta"]].map(([k,t])=>`<button data-fluxo="${k}" aria-pressed="${FLUXO===k}">${t}</button>`).join("")}</div>${seletorPeriodo()}</div></div>
+    <div class="rolagem"><table style="table-layout:fixed;min-width:${FLUXO==="contas"?1100:980}px">
+      <colgroup><col style="width:${FLUXO==="contas"?230:170}px">${MS.map(()=>"<col>").join("")}</colgroup>
+      <thead><tr><th></th>${col.map(c=>`<th style="padding:.2rem .15rem;border-bottom:0">${barra(c)}</th>`).join("")}</tr>
+      <tr><th></th>${col.map(c=>`<th class="v" style="text-align:center;${c.m===M?"background:var(--amarelo-suave);color:var(--tinta)":""}${c.fut?";font-style:italic":""}"><a href="#" data-irmes="${c.m}" style="color:inherit;text-decoration:none">${mesCurto(c.m)}</a></th>`).join("")}</tr></thead>${corpo}
+    </table></div>
+    <p class="sutil" style="margin-bottom:0">Disponível = contas correntes + cartões. Saídas incluem despesas e o que vai para aplicações, reservas e parcelas de empréstimo. O mês atual e os futuros (claros, em itálico) usam o Orçamento: programados, metas e, sem meta, a média de 12 meses.${FLUXO==="contas"?" Por conta: cada fatura de cartão sai da conta que pagou a última; metas, médias e programados sem conta definida ficam em “Estimativas e itens sem conta”.":""} Valores sem centavos.</p></div>`;
 }
 
 /* ========= lançamentos ========= */
@@ -689,8 +764,8 @@ function camposForm(l,modo){
     <div class="largo"><label>Local / estabelecimento</label><input data-k="l" value="${esc(l.l)}"></div>
     <div><label>Categoria</label><select data-k="cat">${opts(cats,l.cat,"Escolha")}</select></div>
     <div><label>Subcategoria</label><select data-k="sub">${opts(subs,l.sub,subs.length?"Escolha":"—")}</select></div>
-    <div><label>Mês (da fatura, no cartão)</label><input type="month" data-k="m" value="${esc(l.m)}"></div>
-    <div><label>Data de pagamento</label><input type="date" data-k="dp" value="${esc(l.dp)}"></div>
+    <div><label>Data de pagamento${grupoDe(l.f)==="cartao"?" (vencimento da fatura)":""}</label><input type="date" data-k="dp" value="${esc(l.dp)}"></div>
+    <div><label>Entra no mês</label><div class="mesinfo" data-mesinfo style="padding:.5rem .6rem;border:1px dashed var(--linha);border-radius:10px;font-weight:800;text-transform:capitalize">${l.dp?mesLabel(l.dp.slice(0,7)):"—"}</div></div>
     ${status}${modo==="novo"?`<div><label>Parcelas</label><input type="number" min="1" max="60" data-k="n" value="1"></div>`:""}
     ${pessoaProj}
     <div class="largo"><label>Descrição (opcional)</label><input data-k="ds" value="${esc(l.ds)}"></div></div>`;
@@ -698,6 +773,7 @@ function camposForm(l,modo){
 function lerForm(raiz,l){
   raiz.querySelectorAll("[data-k]").forEach(i=>{const k=i.dataset.k;let v=i.value;if(k==="v")v=r2(String(v).replace(",","."));if(k==="c")v=+v;if(k==="pj")v=limpa(v);l[k]=v});
   if(l.tp==="T"){l.dp=l.dp||hojeISO();l.dc=l.dc||l.dp;l.m=l.dp.slice(0,7);l.cat="";l.sub=""}
+  else{if(!l.dp&&l.dc)l.dp=calcularPagto(l.f,l.dc).dp;if(l.dp)l.m=l.dp.slice(0,7)}
   return l;
 }
 function ligarForm(raiz,l,rerender){
@@ -705,13 +781,14 @@ function ligarForm(raiz,l,rerender){
   q("tp").onchange=()=>{lerForm(raiz,l);if(l.tp==="T"){l.fd="";l.dp=l.dp||l.dc||hojeISO()}else{l.cat="";l.sub="";l.dc=l.dc||l.dp||hojeISO();Object.assign(l,calcularPagto(l.f,l.dc))}rerender()};
   if(l.tp==="T")return;
   q("cat").onchange=()=>{lerForm(raiz,l);l.sub="";rerender()};
-  const recalc=()=>{lerForm(raiz,l);const p=calcularPagto(l.f,l.dc);q("m").value=p.m;q("dp").value=p.dp;if(raiz.dataset.novo)q("c").value=String(confPadrao(l.f))};
-  q("f").onchange=recalc;q("dc").onchange=recalc;
+  const info=()=>{const d=q("dp").value;const el=raiz.querySelector("[data-mesinfo]");if(el)el.textContent=d?mesLabel(d.slice(0,7)):"—"};
+  const recalc=()=>{lerForm(raiz,l);const p=calcularPagto(l.f,l.dc);q("dp").value=p.dp;l.dp=p.dp;l.m=p.m;info();if(raiz.dataset.novo)q("c").value=String(confPadrao(l.f))};
+  q("f").onchange=()=>{recalc();rerender()};q("dc").onchange=recalc;q("dp").oninput=info;q("dp").onchange=info;
 }
 function validar(l){
   if(!(l.tp==="T"?l.dp:l.dc))return "Informe a data.";if(!isFinite(l.v)||l.v===0)return "Informe um valor diferente de zero.";
   if(l.tp==="T"){if(!l.f||!l.fd)return "Escolha a conta de saída e a de entrada.";if(l.f===l.fd)return "As contas precisam ser diferentes.";if(l.v<0)return "Informe o valor positivo.";return null}
-  if(!l.f)return "Escolha a conta ou o cartão.";if(!l.cat)return "Escolha a categoria.";if(l.tp==="D"&&subsDe(l.cat).length&&!l.sub)return "Escolha a subcategoria.";if(!l.m)return "Informe o mês.";return null;
+  if(!l.f)return "Escolha a conta ou o cartão.";if(!l.cat)return "Escolha a categoria.";if(l.tp==="D"&&subsDe(l.cat).length&&!l.sub)return "Escolha a subcategoria.";if(!l.dp)return "Informe a data de pagamento.";return null;
 }
 async function registrarProjeto(nome){if(!nome||C().projetos.includes(nome))return;const cad=clone(C());cad.projetos=[...cad.projetos,nome].sort();await B().gravarDoc("cadastros",cad)}
 let RASC=null;
@@ -832,17 +909,22 @@ function renderIA(){
 
 /* ========= projeção (orçamento + programados) ========= */
 const pendentes=m=>O().programados.filter(p=>!p.feito&&p.m===m);
-function progPor(m){const o={R:0,D:{},Dsem:0,Tout:0};
-  for(const p of pendentes(m)){if(p.tp==="R")o.R+=p.v;else if(p.tp==="D"){if(p.cat)o.D[p.cat]=(o.D[p.cat]||0)+p.v;else o.Dsem+=p.v}
+function progPor(m){const o={R:0,D:{},Ds:{},Dsem:0,Tout:0};
+  for(const p of pendentes(m)){if(p.tp==="R")o.R+=p.v;else if(p.tp==="D"){if(p.cat){o.D[p.cat]=(o.D[p.cat]||0)+p.v;const k=p.cat+"|"+(p.sub||"");o.Ds[k]=(o.Ds[k]||0)+p.v}else o.Dsem+=p.v}
     else if(p.tp==="T"){const lo=!p.f||liquida(grupoDe(p.f)),ld=p.fd&&liquida(grupoDe(p.fd));if(lo&&!ld)o.Tout+=p.v;else if(!lo&&ld)o.Tout-=p.v}}
   return o}
 let MEDIAS=null,MEDIAS_K=null;
-function mediaCat(c){const k=CACHE?dados().length+"|"+CORTE():"";if(MEDIAS_K!==k){MEDIAS={};MEDIAS_K=k}
-  if(MEDIAS[c]==null){const ult=Array.from({length:12},(_,i)=>addMes(MES_HOJE,-12+i));MEDIAS[c]=ult.reduce((t,m)=>t+totD(m,c),0)/12}return MEDIAS[c]}
+function mediaCat(c,s){const k=dados().length+"|"+CORTE();if(MEDIAS_K!==k){MEDIAS={};MEDIAS_K=k}const ch=s==null?c:c+"|"+s;
+  if(MEDIAS[ch]==null){const ult=Array.from({length:12},(_,i)=>addMes(MES_HOJE,-12+i));MEDIAS[ch]=ult.reduce((t,m)=>t+totD(m,c,s),0)/12}return MEDIAS[ch]}
+/* despesa prevista de uma categoria no mês: maior valor entre a meta (ou a média, sem meta) e o lançado + programado */
+function despPrevCat(m,c,pr){const futuro=m>=MES_HOJE;pr=pr||progPor(m);
+  if(temMetaSub(m,c)){let t=0;const subs=new Set([...subsDe(c).map(s=>s.nome),...Object.keys(pr.Ds).filter(k=>k.startsWith(c+"|")).map(k=>k.slice(c.length+1))]);
+    for(const s of subs){const mt=metaSub(m,c,s);const alvo=mt!=null?mt:(futuro?mediaCat(c,s):0);t+=Math.max(alvo,totD(m,c,s)+(pr.Ds[c+"|"+s]||0))}return t}
+  const mt=metaCat(m,c);const alvo=mt!=null?mt:(futuro?mediaCat(c):0);return Math.max(alvo,totD(m,c)+(pr.D[c]||0));}
 function previsaoMes(m){
-  const pr=progPor(m),metas=O().metas[m]||{};let desp=pr.Dsem;const futuro=m>MES_HOJE;
-  const cats=new Set([...alfa(C().catD.map(c=>c.nome)),...Object.keys(metas),...Object.keys(pr.D)]);
-  for(const c of cats){const alvo=metas[c]!=null?metas[c]:(futuro?mediaCat(c):0);desp+=Math.max(alvo,totD(m,c)+(pr.D[c]||0))}
+  const pr=progPor(m),metas=metasDe(m);let desp=pr.Dsem;
+  const cats=new Set([...C().catD.map(c=>c.nome),...Object.keys(metas).map(k=>k.split("|")[0]),...Object.keys(pr.D)]);
+  for(const c of cats)desp+=despPrevCat(m,c,pr);
   return {rec:totR(m)+pr.R,desp,tout:guardado(m)+pr.Tout,prog:pr}
 }
 function projecao(MS){
@@ -892,26 +974,33 @@ function renderAnalise(){
 
 /* ========= orçamento ========= */
 async function gravarOrc(orc){await B().gravarDoc("orcamento",orc);invalida()}
+const ABRE_ORC=new Set();
 function renderOrc(){
   const el=$("#aba-orc");if(!S.cad){el.innerHTML=`<div class="painel vazio">${fe("vazio","xg")}<p>Importe a carga inicial em Ajustes.</p></div>`;return}
   const M=S.mes,metas=O().metas[M]||{},pr=progPor(M),ult=Array.from({length:12},(_,i)=>addMes(M,-12+i));
-  const linhas=C().catD.filter(c=>c.ativo!==false).map(c=>{const o=metas[c.nome]||0,l=totD(M,c.nome),p=pr.D[c.nome]||0,med=ult.reduce((t,m)=>t+totD(m,c.nome),0)/12;return {c:c.nome,o,l,p,d:o-l-p,med}});
+  const lin=(c,sb)=>{const o=sb==null?(metaCat(M,c)||0):(metaSub(M,c,sb)||0),l=totD(M,c,sb),p=sb==null?(pr.D[c]||0):(pr.Ds[c+"|"+sb]||0),med=ult.reduce((t,m)=>t+totD(m,c,sb),0)/12;return {o,l,p,d:o-l-p,med}};
+  const linhas=C().catD.filter(c=>c.ativo!==false).map(c=>({c:c.nome,modoSub:temMetaSub(M,c.nome),...lin(c.nome)}));
   const T={o:0,l:0,p:0,med:0};linhas.forEach(x=>{T.o+=x.o;T.l+=x.l;T.p+=x.p;T.med+=x.med});
   const prog=O().programados.filter(p=>p.m===M).sort((a,b)=>(a.feito?1:0)-(b.feito?1:0)||a.tp.localeCompare(b.tp));
   const MS=Array.from({length:12},(_,i)=>addMes(M>MES_HOJE?M:MES_HOJE,i));const P=projecao(MS);
   el.innerHTML=`<div class="colunas"><div>
    <div class="painel rolagem"><div class="cab"><h2>${fe("orcamento")} Metas de ${mesLabel(M)}</h2>
      <div class="acoes" style="margin:0"><button class="btn sec mini" id="oSug">${fe("estrela","p")} Sugerir pela média</button><button class="btn sec mini" id="oCopia">Copiar do mês anterior</button><button class="btn sec mini" id="oRepete">Repetir nos próximos 11 meses</button></div></div>
-     <p class="sutil">Digite quanto vocês querem gastar por categoria. “Programado” são compromissos já previstos (contas fixas, parcelas) ainda não lançados.</p>
+     <p class="sutil">Digite a meta por categoria ou toque na categoria para definir por subcategoria (a categoria vira a soma). “Programado” são compromissos previstos ainda não lançados. Sem meta, a projeção usa a média dos últimos 12 meses.</p>
      <table><thead><tr><th>Categoria</th><th class="v">Orçado</th><th class="v">Lançado</th><th class="v">Programado</th><th class="v">Disponível</th><th>Uso</th><th class="v">Média 12m</th></tr></thead><tbody>
-     ${linhas.map(x=>{const pct=x.o?(x.l+x.p)/x.o:0;return `<tr><td><span class="nome">${fe(icCat(x.c),"p")}${esc(x.c)}</span></td><td class="v"><input class="inf" type="number" step="10" min="0" data-meta="${esc(x.c)}" value="${x.o||""}" placeholder="0"></td>
-       <td class="v">${brl(x.l)}</td><td class="v sutil">${x.p?brl(x.p):"–"}</td><td class="v ${x.d<0?"neg":""}">${x.o?brl(x.d):"–"}</td><td>${x.o?`<div class="barra"><b class="${pct>1?"estouro":""}" style="width:${Math.min(pct,1)*100}%"></b></div>`:""}</td><td class="v sutil">${brl(x.med)}</td></tr>`}).join("")}
+     ${linhas.map(x=>{const ab=ABRE_ORC.has(x.c);const pct=x.o?(x.l+x.p)/x.o:0;
+       const subs=ab?subsDe(x.c).filter(sb=>sb.ativo!==false).map(sb=>({s:sb.nome,...lin(x.c,sb.nome)})):[];
+       return `<tr><td><button class="abre pula" data-abreorc="${esc(x.c)}" aria-expanded="${ab}">${ab?"▾":"▸"} ${fe(icCat(x.c),"p")} ${esc(x.c)}</button>${x.modoSub?' <span class="tag">por subcategoria</span>':""}</td>
+       <td class="v">${x.modoSub?`<b title="Soma das metas das subcategorias">${brl(x.o)}</b>`:`<input class="inf" type="number" step="10" min="0" data-meta="${esc(x.c)}" value="${x.o||""}" placeholder="0">`}</td>
+       <td class="v">${brl(x.l)}</td><td class="v sutil">${x.p?brl(x.p):"–"}</td><td class="v ${x.d<0?"neg":""}">${x.o?brl(x.d):"–"}</td><td>${x.o?`<div class="barra"><b class="${pct>1?"estouro":""}" style="width:${Math.min(pct,1)*100}%"></b></div>`:""}</td><td class="v sutil">${brl(x.med)}</td></tr>
+       ${subs.map(y=>{const pc=y.o?(y.l+y.p)/y.o:0;return `<tr class="sub"><td>${esc(y.s)}</td><td class="v"><input class="inf" type="number" step="10" min="0" data-metasub="${esc(x.c+"|"+y.s)}" value="${y.o||""}" placeholder="${x.modoSub?"0":"meta"}"></td>
+         <td class="v">${brl(y.l)}</td><td class="v sutil">${y.p?brl(y.p):"–"}</td><td class="v ${y.d<0?"neg":""}">${y.o?brl(y.d):"–"}</td><td>${y.o?`<div class="barra"><b class="${pc>1?"estouro":""}" style="width:${Math.min(pc,1)*100}%"></b></div>`:""}</td><td class="v sutil">${brl(y.med)}</td></tr>`}).join("")}`}).join("")}
      </tbody><tfoot><tr><th>Total</th><th class="v">${brl(T.o)}</th><th class="v">${brl(T.l)}</th><th class="v">${brl(T.p)}</th><th class="v ${T.o-T.l-T.p<0?"neg":""}">${brl(T.o-T.l-T.p)}</th><th></th><th class="v">${brl(T.med)}</th></tr></tfoot></table></div>
   </div><div>
    <div class="painel"><div class="cab"><h2>${fe("calendario")} Programados de ${mesLabel(M)}</h2><button class="btn mini" id="oNovoProg">${fe("novo","p")} Programar</button></div>
      <p class="sutil">Receitas, contas e transferências esperadas. Quando acontecerem, toque em <b>Lançar</b>: o lançamento é criado já preenchido.</p>
      ${prog.length?`<div class="rolagem"><table><tbody>${prog.map(p=>`<tr style="${p.feito?"opacity:.5":""}"><td><span class="nome">${fe(p.tp==="T"?"transf":p.tp==="R"?icRec(p.cat):icCat(p.cat),"p")}${esc(p.l||p.cat||"—")}</span><div class="sutil">${p.tp==="T"?esc(`${p.f||"?"} → ${p.fd||"?"}`):esc([p.cat,p.sub].filter(Boolean).join(" › "))}${p.f&&p.tp!=="T"?` · ${esc(p.f)}`:""}</div></td>
-       <td class="v ${(p.tp==="R"&&p.v>0)||(p.tp==="D"&&p.v<0)?"pos":""}">${p.tp==="T"?brl(p.v):brl(p.tp==="D"?-p.v:p.v)}</td><td class="v">${p.feito?`<span class="pos">${fe("conferido","p")} lançado</span>`:`<button class="btn mini" data-lancar="${esc(p.id)}">Lançar</button> <button class="ico" data-delprog="${esc(p.id)}" aria-label="Excluir">🗑️</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="vazio">${fe("calendario","g")}<p>Nada programado para este mês.</p></div>`}
+       <td class="v ${(p.tp==="R"&&p.v>0)||(p.tp==="D"&&p.v<0)?"pos":""}">${p.tp==="T"?brl(p.v):brl(p.tp==="D"?-p.v:p.v)}</td><td class="v">${p.feito?`<span class="pos">${fe("conferido","p")} lançado</span>`:`<button class="btn mini" data-lancar="${esc(p.id)}">Lançar</button> <button class="ico" data-editprog="${esc(p.id)}" aria-label="Editar">✏️</button> <button class="ico" data-delprog="${esc(p.id)}" aria-label="Excluir">🗑️</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="vazio">${fe("calendario","g")}<p>Nada programado para este mês.</p></div>`}
    </div>
    <div class="painel rolagem"><div class="cab"><h2>${fe("saldo")} Projeção do disponível</h2></div>
      <p class="sutil">Disponível = contas correntes + cartões. Em cada categoria vale o maior valor entre a meta e o já lançado mais o programado; nos meses futuros sem meta, usa a média dos últimos 12 meses.</p>
@@ -919,11 +1008,18 @@ function renderOrc(){
      ${MS.map(m=>{const p=P[m];return `<tr class="${m===M?"atual":""}"><td>${mesLabel(m)}</td><td class="v">${brl(p.rec)}</td><td class="v">${brl(p.desp)}</td><td class="v">${brl(p.tout)}</td><td class="v ${p.liq<0?"neg":""}"><b>${brl(p.liq)}</b>${p.liq<0?" "+fe("alerta","p"):""}</td></tr>`}).join("")}</tbody></table></div>
   </div></div>`;
   el.querySelectorAll("[data-meta]").forEach(i=>i.onchange=async()=>{const orc=clone(O());orc.metas[M]=orc.metas[M]||{};const v=r2(i.value);if(v)orc.metas[M][i.dataset.meta]=v;else delete orc.metas[M][i.dataset.meta];await gravarOrc(orc);renderOrc()});
-  $("#oSug").onclick=async()=>{const orc=clone(O());orc.metas[M]=orc.metas[M]||{};let n=0;linhas.forEach(x=>{if(!orc.metas[M][x.c]&&x.med>0){orc.metas[M][x.c]=Math.ceil(x.med/10)*10;n++}});await gravarOrc(orc);renderOrc();toast(n?`${n} metas sugeridas pela média dos últimos 12 meses (arredondadas para cima).`:"Todas as categorias já têm meta.")};
+  el.querySelectorAll("[data-metasub]").forEach(i=>i.onchange=async()=>{const k=i.dataset.metasub,c=k.split("|")[0];const orc=clone(O());orc.metas[M]=orc.metas[M]||{};const v=r2(i.value);
+    if(v&&!temMetaSub(M,c)&&orc.metas[M][c]&&!confirm(`Ao definir metas por subcategoria, a meta de “${c}” passa a ser a soma das subcategorias (a meta atual de ${brl(orc.metas[M][c])} deixa de valer). Continuar?`))return renderOrc();
+    if(v)orc.metas[M][k]=v;else delete orc.metas[M][k];await gravarOrc(orc);renderOrc()});
+  el.querySelectorAll("[data-abreorc]").forEach(b=>b.onclick=()=>{const c=b.dataset.abreorc;ABRE_ORC.has(c)?ABRE_ORC.delete(c):ABRE_ORC.add(c);renderOrc()});
+  $("#oSug").onclick=async()=>{const orc=clone(O());orc.metas[M]=orc.metas[M]||{};let n=0;
+    linhas.forEach(x=>{if(x.modoSub){subsDe(x.c).forEach(sb=>{const k=x.c+"|"+sb.nome;const md=mediaCat(x.c,sb.nome);if(orc.metas[M][k]==null&&md>0){orc.metas[M][k]=Math.ceil(md/10)*10;n++}})}
+      else if(!orc.metas[M][x.c]&&x.med>0){orc.metas[M][x.c]=Math.ceil(x.med/10)*10;n++}});await gravarOrc(orc);renderOrc();toast(n?`${n} metas sugeridas pela média dos últimos 12 meses (arredondadas para cima).`:"Todas as categorias já têm meta.")};
   $("#oCopia").onclick=async()=>{const ant=O().metas[addMes(M,-1)];if(!ant)return toast("O mês anterior não tem metas.");const orc=clone(O());orc.metas[M]={...ant};await gravarOrc(orc);renderOrc();toast("Metas copiadas do mês anterior.")};
   $("#oRepete").onclick=async()=>{if(!Object.keys(metas).length)return toast("Defina as metas deste mês primeiro.");if(!confirm("Substituir as metas dos próximos 11 meses por estas?"))return;const orc=clone(O());for(let i=1;i<=11;i++)orc.metas[addMes(M,i)]={...metas};await gravarOrc(orc);toast("Metas repetidas para os próximos 11 meses.")};
   $("#oNovoProg").onclick=()=>formProgramado(M);
   el.querySelectorAll("[data-lancar]").forEach(b=>b.onclick=()=>lancarProgramado(b.dataset.lancar));
+  el.querySelectorAll("[data-editprog]").forEach(b=>b.onclick=()=>editarProgramado(b.dataset.editprog));
   el.querySelectorAll("[data-delprog]").forEach(b=>b.onclick=async()=>{if(!confirm("Excluir este programado?"))return;const orc=clone(O());orc.programados=orc.programados.filter(p=>p.id!==b.dataset.delprog);await gravarOrc(orc);renderOrc()});
 }
 function formProgramado(M){
@@ -933,7 +1029,7 @@ function formProgramado(M){
     <div class="acoes"><button class="btn" id="pgOk">Programar</button><button class="btn sec" id="pgCancel">Cancelar</button></div>`;
     const r=$("#fProg");ligarForm(r,l,desenha);$("#pgCancel").onclick=()=>$("#dlg").close();
     $("#pgOk").onclick=async()=>{lerForm(r,l);if(!(l.v>0))return toast("Informe o valor.");if(l.tp!=="T"&&!l.cat)return toast("Escolha a categoria.");
-      const ate=$("#progAte").value||M;const orc=clone(O());const base={tp:l.tp,v:l.v,f:l.f,fd:l.fd,cat:l.cat,sub:l.sub,l:l.l,ds:l.ds,mot:l.mot,pq:l.pq,pj:l.pj};let n=0;
+      const ate=$("#progAte").value||M;const orc=clone(O());const base={tp:l.tp,v:l.v,f:l.f,fd:l.fd,cat:l.cat,sub:l.sub,l:l.l,ds:l.ds,mot:l.mot,pq:l.pq,pj:l.pj,s:"s"+novoId().slice(1)};let n=0;
       for(let m=M;m<=ate&&n<60;m=addMes(m,1)){orc.programados.push({...base,id:novoId(),m});n++}
       await gravarOrc(orc);$("#dlg").close();renderOrc();toast(`${n} programado(s) criado(s).`)};};
   desenha();$("#dlg").showModal();
@@ -941,12 +1037,52 @@ function formProgramado(M){
 function lancarProgramado(id){
   const p=O().programados.find(x=>x.id===id);if(!p)return;const[y,mm]=p.m.split("-").map(Number);const d=p.m===MES_HOJE?hojeISO():`${p.m}-${p2(diaValido(y,mm,10))}`;
   const l={tp:p.tp,dc:d,dp:d,m:p.m,f:p.f||"",fd:p.fd||"",v:p.v,l:(p.l||"").replace(/^PREVIS[ÃA]O\s*/i,""),cat:p.cat||"",sub:p.sub||"",ds:p.ds||"",c:2,pq:p.pq||"Família",pj:p.pj||"",mot:p.mot||""};
-  if(l.tp!=="T"&&l.f)Object.assign(l,{m:calcularPagto(l.f,l.dc).m});
+  if(l.tp!=="T"&&l.f)Object.assign(l,calcularPagto(l.f,l.dc));
   const desenha=()=>{$("#dlgCorpo").innerHTML=`<h2>${fe("novo")} Lançar programado</h2><p class="sutil">Confira valor, data e conta; o programado fica marcado como lançado.</p><div id="fLp" data-novo="1">${camposForm(l,"prog")}</div>
     <div class="acoes"><button class="btn" id="lpOk">${fe("conferido","p")} Lançar</button><button class="btn sec" id="lpCancel">Cancelar</button></div>`;
     const r=$("#fLp");ligarForm(r,l,desenha);$("#lpCancel").onclick=()=>$("#dlg").close();
     $("#lpOk").onclick=async()=>{lerForm(r,l);const e=validar(l);if(e)return toast(e);const novo={...l,id:novoId(),o:"programado"};
       await salvar([novo]);const orc=clone(O());const q=orc.programados.find(x=>x.id===id);if(q)q.feito=novo.id;await gravarOrc(orc);$("#dlg").close();renderTudo();toast("Lançado!")};};
+  desenha();$("#dlg").showModal();
+}
+
+/* ========= editar programados (um mês, deste em diante ou a série toda) ========= */
+const chaveSerie=p=>p.s||[p.tp,semAcento(p.l),p.cat||"",p.f||"",p.fd||""].join("|");
+function serieDe(p){const k=chaveSerie(p);return O().programados.filter(x=>!x.feito&&chaveSerie(x)===k).sort((a,b)=>a.m.localeCompare(b.m))}
+function editarProgramado(id){
+  const p=O().programados.find(x=>x.id===id);if(!p)return;const serie=serieDe(p);const prox=serie.filter(x=>x.m>=p.m);const ult=serie[serie.length-1].m;
+  const l={...p};
+  const desenha=()=>{
+    const cats=l.tp==="R"?alfa(C().catR.map(c=>c.nome)):alfa(C().catD.map(c=>c.nome));
+    $("#dlgCorpo").innerHTML=`<h2>${fe("calendario")} Editar programado</h2>
+    <p class="sutil">${esc(p.l||p.cat||"Programado")} · ${mesLabel(p.m)}. Esta série tem ${serie.length} mês(es) pendente(s), de ${mesLabel(serie[0].m)} a ${mesLabel(ult)}.</p>
+    <div class="form">
+      <div class="largo"><label>Descrição</label><input id="epL" value="${esc(l.l)}"></div>
+      <div><label>Valor (R$)</label><input type="number" step="0.01" id="epV" value="${l.v}"></div>
+      <div><label>${l.tp==="T"?"Sai da conta":"Conta"}</label><select id="epF">${optsContas(l.f,"Definir ao lançar",true)}</select></div>
+      ${l.tp==="T"?`<div><label>Entra na conta</label><select id="epFd">${optsContas(l.fd,"Escolha",true)}</select></div>`:
+        `<div><label>Categoria</label><select id="epC">${opts(cats,l.cat,"Escolha")}</select></div>${l.tp==="D"?`<div><label>Subcategoria</label><select id="epS">${opts(alfa(subsDe(l.cat).map(x=>x.nome)),l.sub,"—")}</select></div>`:""}`}
+      <div><label>Repetir até</label><input type="month" id="epAte" value="${ult}" title="Aumente para estender a série com novos meses"></div>
+    </div>
+    <p class="sutil">Para estender (por exemplo, o salário depois de ${mesLabel(ult)}), aumente o “Repetir até”: os meses novos são criados com estes valores.</p>
+    <div class="escolhas"><button class="btn sec" data-ep="1">Salvar só em ${mesLabel(p.m)}</button>
+      <button class="btn" data-ep="2">Salvar de ${mesLabel(p.m)} em diante (${prox.length} mês(es))</button>
+      <button class="btn sec" data-ep="3">Salvar na série toda (${serie.length} mês(es))</button>
+      <button class="btn sec" data-ep="0">Cancelar</button></div>`;
+    if($("#epC"))$("#epC").onchange=()=>{l.cat=$("#epC").value;l.sub="";ler();desenha()};
+    document.querySelectorAll("[data-ep]").forEach(b=>b.onclick=()=>salvarEdicao(+b.dataset.ep));
+  };
+  const ler=()=>{l.l=limpa($("#epL").value);l.v=r2($("#epV").value);l.f=$("#epF").value;if($("#epFd"))l.fd=$("#epFd").value;if($("#epC"))l.cat=$("#epC").value;if($("#epS"))l.sub=$("#epS").value};
+  async function salvarEdicao(op){
+    if(!op)return $("#dlg").close();ler();if(!(l.v>0))return toast("Informe o valor.");if(l.tp==="T"&&!l.fd)return toast("Escolha a conta de entrada.");
+    const alvo=new Set((op===1?[p]:op===2?prox:serie).map(x=>x.id));const orc=clone(O());const campos={l:l.l,v:l.v,f:l.f,fd:l.fd,cat:l.cat,sub:l.sub};
+    orc.programados.forEach(x=>{if(alvo.has(x.id))Object.assign(x,campos)});
+    const ate=$("#epAte").value;let novos=0;
+    if(ate&&ate>ult){const modelo={...orc.programados.find(x=>x.id===(op===1?serie[serie.length-1].id:p.id))};
+      for(let m=addMes(ult,1);m<=ate&&novos<120;m=addMes(m,1)){const {feito,...b}=modelo;orc.programados.push({...b,...(op===1?{}:campos),id:novoId(),m});novos++}}
+    await gravarOrc(orc);$("#dlg").close();renderOrc();
+    toast(`${alvo.size} programado(s) atualizado(s)${novos?` e ${novos} mês(es) novo(s) criado(s) até ${mesLabel(ate)}`:""}.`,5000);
+  }
   desenha();$("#dlg").showModal();
 }
 
@@ -964,7 +1100,7 @@ async function aplicarMudancas({conta={},cat={},sub={},rec={}}){
   if(!temConta&&!temD&&!temR)return;
   await reescreverBase(l=>{if(temConta){l.f=nc(l.f);if(l.fd)l.fd=nc(l.fd)}if(temD&&l.tp==="D"){[l.cat,l.sub]=mapD(l.cat,l.sub)}if(temR&&l.tp==="R")l.cat=rec[l.cat]||l.cat;return l});
   const orc=clone(O());orc.programados.forEach(p=>{if(temConta){p.f=nc(p.f);p.fd=nc(p.fd)}if(p.tp==="D"&&temD)[p.cat,p.sub]=mapD(p.cat,p.sub);if(p.tp==="R"&&temR)p.cat=rec[p.cat]||p.cat});
-  for(const m of Object.keys(orc.metas)){const n={};for(const[c,v]of Object.entries(orc.metas[m])){const c2=cat[c]||c;n[c2]=(n[c2]||0)+v}orc.metas[m]=n}
+  for(const m of Object.keys(orc.metas)){const n={};for(const[k,v]of Object.entries(orc.metas[m])){let k2;if(k.includes("|")){const[c,s]=k.split("|");k2=mapD(c,s).join("|")}else k2=cat[k]||k;n[k2]=r2((n[k2]||0)+v)}orc.metas[m]=n}
   const hist=clone(H());
   for(const m of Object.keys(hist.despesas)){const n={};for(const[k,v]of Object.entries(hist.despesas[m])){const[c,s]=k.split("|");const[c2,s2]=mapD(c,s);const k2=`${c2}|${s2}`;n[k2]=r2((n[k2]||0)+v)}hist.despesas[m]=n}
   for(const m of Object.keys(hist.receitas)){const n={};for(const[c,v]of Object.entries(hist.receitas[m])){const c2=rec[c]||c;n[c2]=r2((n[c2]||0)+v)}hist.receitas[m]=n}
@@ -1086,6 +1222,9 @@ function renderAjustes(){
   <div class="painel"><h2>${fe("analise")} Excel e manutenção</h2>
     <p>Gera uma planilha com todos os lançamentos, os saldos mês a mês e o histórico por subcategoria.${CFG.modo==="onedrive"?" Uma cópia fica na pasta <b>exportacoes</b>.":""}</p>
     <div class="acoes"><button class="btn" id="ajExport">Gerar Excel</button>${CFG.modo==="onedrive"?`<button class="btn sec" id="ajConsol">Consolidar pendentes (${S.pend.length})</button>`:""}</div></div>
+  <div class="painel"><h2>${fe("conferido")} Importar correções</h2>
+    <p>Aplica um arquivo de correções gerado numa revisão dos dados (por exemplo, <b>correcoes_*.json</b>). Antes de aplicar, a lista de mudanças aparece para conferência.</p>
+    <input type="file" id="ajCorr" accept=".json"><div id="corrPrev"></div></div>
   <div class="painel"><h2>${fe("estrela")} Aparência</h2><div class="segmentos">${[["auto","Automático"],["light","Claro"],["dark","Escuro"]].map(([k,t])=>`<button data-tema="${k}" aria-pressed="${tema===k}">${t}</button>`).join("")}</div></div>
   <div class="painel"><h2>${fe("presentes")} Créditos</h2><p class="sutil">Ícones: <b>Fluent Emoji</b>, da Microsoft, licença MIT (github.com/microsoft/fluentui-emoji).</p></div>
   </div></div>`;
@@ -1099,6 +1238,22 @@ function renderAjustes(){
       toast("Importando…");await B().gravarDoc("cadastros",j.cadastros);await B().gravarDoc("historico",j.historico);await B().gravarDoc("orcamento",j.orcamento);await B().gravarBase(j.lancamentos||[]);
       if(CFG.modo==="onedrive")for(const p of [...S.pend])if(p._arq)await OneDrive.gx("DELETE",`/drives/${OneDrive.D}/items/${p._arq}`);
       S.pend=[];invalida();S.mes=MES_HOJE;irAba("painel");toast(`Carga concluída: ${j.cadastros.contas.length} contas e ${(j.lancamentos||[]).length} lançamentos.`,6000);confete()}catch(x){toast(x.message,7000)}};
+  $("#ajCorr").onchange=async e=>{const a=e.target.files[0];if(!a)return;let j;try{j=JSON.parse(await a.text());if(j.tipo!=="correcoes"||!Array.isArray(j.ops))throw 0}catch{return toast("Este arquivo não é um arquivo de correções.")}
+    const L=dados(),ok=[],falha=[];
+    for(const o of j.ops){const existe=o.op.startsWith("lanc")?L.some(l=>l.id===o.id):o.op.startsWith("prog")?O().programados.some(p=>p.id===o.id):o.op==="contaAlterar"?!!contaObj(o.nome):true;(existe?ok:falha).push(o)}
+    $("#corrPrev").innerHTML=`<div class="aviso">${esc(j.titulo||"Correções")}</div><ul>${ok.map(o=>`<li>${esc(o.desc||o.op)}</li>`).join("")}</ul>${falha.length?`<p class="sutil">${falha.length} item(ns) não encontrado(s) (talvez já corrigidos) e serão ignorados.</p>`:""}
+      <div class="acoes"><button class="btn" id="corrOk">Aplicar ${ok.length} correção(ões)</button><button class="btn sec" id="corrNao">Cancelar</button></div>`;
+    $("#corrNao").onclick=()=>{$("#corrPrev").innerHTML="";e.target.value=""};
+    $("#corrOk").onclick=async ev=>{ev.target.disabled=true;try{const cad=clone(C()),orc=clone(O());const lanc=[];
+      for(const o of ok){
+        if(o.op==="lancExcluir")lanc.push({id:o.id,x:1});
+        else if(o.op==="lancAlterar"){const l=dados().find(x=>x.id===o.id);lanc.push({...l,...o.campos})}
+        else if(o.op==="contaAlterar"){Object.assign(cad.contas.find(c=>c.nome===o.nome),o.campos)}
+        else if(o.op==="informado"){cad.informados=cad.informados||{};(cad.informados[o.conta]=cad.informados[o.conta]||{})[o.mes]=o.valor}
+        else if(o.op==="progExcluir")orc.programados=orc.programados.filter(p=>p.id!==o.id);
+        else if(o.op==="progAlterar"){const p=orc.programados.find(x=>x.id===o.id);if(p)Object.assign(p,o.campos)}}
+      await B().gravarDoc("cadastros",cad);await B().gravarDoc("orcamento",orc);if(lanc.length)await salvar(lanc);invalida();renderTudo();toast(`${ok.length} correção(ões) aplicada(s).`,5000);confete()}catch(x){toast(x.message,7000);ev.target.disabled=false}};
+  };
   $("#ajExport").onclick=async e=>{e.target.disabled=true;try{const blob=gerarXlsx();const nome=`Orcamento2_${hojeISO()}.xlsx`;const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=nome;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
     if(await B().enviarExport(blob,nome))toast("Excel gerado e salvo no OneDrive.");else toast("Excel gerado.")}catch(x){toast(x.message)}e.target.disabled=false};
   if($("#ajConsol"))$("#ajConsol").onclick=async e=>{e.target.disabled=true;try{const n=await B().consolidar();invalida();renderTudo();toast(`${n} pendentes consolidados.`)}catch(x){toast(x.message,6000);e.target.disabled=false}};
