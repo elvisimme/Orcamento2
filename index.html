@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orçamento 2.0</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+<link rel="icon" type="image/png" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Orçamento">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F6F4EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171B" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -506,8 +514,29 @@ function ligarPeriodo(raiz){raiz.querySelectorAll("[data-per]").forEach(b=>b.onc
 function kpi(ic,rot,val,cls,extra){return `<div class="kpi pula">${fe(ic,"g")}<div style="min-width:0"><small>${rot}</small><strong class="${cls||""}">${val}</strong>${extra?`<span class="sutil">${extra}</span>`:""}</div></div>`}
 const ABERTAS=new Set();
 function difHtml(d){return Math.abs(d)<0.005?`<span class="pos">${fe("conferido","p")} bate</span>`:`<span class="neg">${d>0?"+":""}${brl(d)}</span>`}
+/* ========= app instalado (tela de início do iPhone) ========= */
+const APP=navigator.standalone===true||!!(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);
+function codigoConfig(){return "ORC2CFG:"+btoa(unescape(encodeURIComponent(JSON.stringify({c:CFG.clientId,l:CFG.linkPasta||""}))))}
+async function aplicarCodigo(txt){const m=String(txt||"").replace(/\s/g,"").match(/ORC2CFG:([A-Za-z0-9+/=]+)/);
+  if(!m)return toast("Código não reconhecido. No Safari, vá em Ajustes → Usar como app no iPhone → Copiar código, e cole aqui.",7000);
+  let o;try{o=JSON.parse(decodeURIComponent(escape(atob(m[1]))))}catch{return toast("O código veio incompleto. Copie de novo.",5000)}
+  if(!o.c)return toast("O código não tem o ID do aplicativo.",5000);
+  CFG.modo="onedrive";CFG.clientId=o.c;CFG.linkPasta=o.l||"";gravarCfg(CFG);MSAL=null;toast("Configuração aplicada. Entrando na sua conta Microsoft…",5000);await iniciar()}
+function caixaColarCodigo(){return `<div class="form" style="margin-top:.6rem"><div class="largo"><label>Código de configuração</label><input id="appCodigo" placeholder="ORC2CFG:…" autocomplete="off" autocapitalize="off" spellcheck="false"></div></div>
+  <div class="acoes"><button class="btn" data-app="colarclip">${fe("conferido","p")} Colar e configurar</button><button class="btn sec" data-app="aplicar">Usar o código digitado</button></div>`}
+function painelApp(){if(DEMO)return "";
+  if(APP&&!CFG.clientId)return `<div class="painel"><h2>${fe("dinheiro")} Primeira vez no app</h2><p>O app instalado não compartilha as configurações do Safari. Cole aqui o <b>código de configuração</b> copiado no Safari (Ajustes → Usar como app no iPhone).</p>${caixaColarCodigo()}</div>`;
+  if(APP)return "";
+  return `<div class="painel"><h2>${fe("assinaturas")} Usar como app no iPhone</h2>
+    <ol style="margin:.2rem 0 .6rem 1.1rem;padding:0"><li>Abra este site no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta) → <b>Adicionar à Tela de Início</b> → <b>Adicionar</b>.</li><li>Antes de abrir o app, toque em <b>Copiar código</b> abaixo.</li><li>Abra o app pelo ícone, toque em <b>Colar e configurar</b> e faça o login da Microsoft.</li></ol>
+    ${CFG.clientId?`<div class="acoes"><button class="btn" data-app="copiar">${fe("cadastros","p")} Copiar código de configuração</button></div><p class="sutil">O código leva só o ID do aplicativo e o link da pasta (nenhum dado financeiro nem senha).</p>`:`<p class="sutil">Conecte o OneDrive primeiro, para gerar o código.</p>`}</div>`}
+document.addEventListener("click",async e=>{const b=e.target.closest("[data-app]");if(!b)return;const a=b.dataset.app;
+  if(a==="copiar"){try{await navigator.clipboard.writeText(codigoConfig());toast("Código copiado! Agora abra o app pelo ícone e toque em “Colar e configurar”.",6000)}catch{prompt("Copie o código abaixo:",codigoConfig())}}
+  else if(a==="colarclip"){try{await aplicarCodigo(await navigator.clipboard.readText())}catch{toast("O iPhone não liberou a área de transferência. Toque no campo, cole o código e use “Usar o código digitado”.",7000)}}
+  else if(a==="aplicar")await aplicarCodigo(($("#appCodigo")||{}).value)});
 function renderPainel(){
   const el=$("#aba-painel");
+  if(APP&&!DEMO&&!CFG.clientId){el.innerHTML=painelApp();return}
   if(!S.cad){el.innerHTML=`<div class="painel vazio">${fe("vazio","xg")}<h2>Vamos começar?</h2><p>Em <b>Ajustes</b>, importe a carga inicial (o arquivo <b>carga_inicial_orcamento2.json</b>) para trazer contas, histórico e lançamentos.</p><button class="btn" onclick="irAba('ajustes')">${fe("ajustes","p")} Abrir Ajustes</button></div>`;return}
   const M=S.mes,MA=addMes(M,-12);
   const rec=totR(M),desp=totD(M),res=rec-desp,gd=guardado(M),RS=resumoSaldos(M),RSa=resumoSaldos(addMes(M,-1));const tp=tipoMes(M),tpT=tp.E+tp.V+tp.F||1;
@@ -1287,6 +1316,7 @@ function gerarXlsx(){
 function renderAjustes(){
   const tema=document.documentElement.dataset.theme||"auto";
   $("#aba-ajustes").innerHTML=`<div class="colunas"><div>
+  ${painelApp()}
   <div class="painel"><h2>${fe("corrente")} Onde os dados ficam</h2>
     <div class="form"><div><label>Modo</label><select id="ajModo"><option value="local" ${CFG.modo==="local"?"selected":""}>Teste neste navegador</option><option value="onedrive" ${CFG.modo==="onedrive"?"selected":""}>OneDrive pessoal</option></select></div>
       <div class="largo ${CFG.modo==="onedrive"?"":"oculto"}" id="ajOD"><label>ID do aplicativo (o mesmo do Orçamento atual)</label><input id="ajClient" value="${esc(CFG.clientId)}" placeholder="00000000-0000-0000-0000-000000000000">
