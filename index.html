@@ -38,7 +38,7 @@
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 76px)}
-body{margin:0;background:var(--papel);color:var(--tinta);font:15px/1.5 "Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+body{margin:0;background:var(--papel);color:var(--tinta);font:.9375rem/1.5 "Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--papel)}
 h1,h2,h3{font-family:Nunito,system-ui,sans-serif;font-weight:800;margin:0;letter-spacing:-.01em}
 h1{font-size:1.4rem} h2{font-size:1.12rem;margin-bottom:.6rem} h3{font-size:1rem}
@@ -187,6 +187,42 @@ dialog{border:1.5px solid var(--contorno);border-radius:18px;background:var(--su
 dialog::backdrop{background:rgba(0,0,0,.4)}
 pre.prompt{white-space:pre-wrap;background:var(--papel);border:1px solid var(--linha);border-radius:10px;padding:.8rem;font-size:.82rem;max-height:26rem;overflow:auto}
 .oculto{display:none!important}
+.so-cel{display:none}
+@supports (font:-apple-system-body){@media (max-width:900px) and (pointer:coarse){html{font:-apple-system-body}}}
+@media (max-width:600px){
+  html,body{overflow-x:hidden}
+  header.topo{gap:.4rem;padding:.5rem .75rem}
+  header.topo h1{min-width:0;flex:1 1 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:1.15rem}
+  .mesnav{gap:.2rem;flex:none}.mesnav .ico{width:2.1rem;height:2.1rem}.mesbtn{padding:.3rem .55rem}
+  #olho{margin-right:.1rem!important}
+  main{padding:.85rem .75rem 6.5rem}
+  .painel{padding:.95rem .9rem;border-radius:16px}
+  input,select,textarea{font-size:max(16px,1rem)}
+  nav.abas button{font-size:.66rem}
+  .so-cel{display:block}
+  .cab h2{font-size:1.05rem}
+  #aba-painel .rolagem table td:first-child,#aba-painel .rolagem table th:first-child,#aba-orc .rolagem table td:first-child,#aba-orc .rolagem table th:first-child{position:sticky;left:0;z-index:2;background:var(--superficie);box-shadow:4px 0 6px -4px rgba(0,0,0,.18)}
+  #aba-painel tr.grupo td:first-child{background:var(--papel)}
+  #aba-painel tr.atual td:first-child{background:var(--amarelo-suave)}
+  table.fluxo col:first-child{width:150px!important}
+  table.fluxo{font-size:.95rem}
+  table.contas tr:not(.hist)>:nth-child(n+2):nth-child(-n+5){display:none}
+  table.contas{min-width:0}
+  table.contas td:first-child{white-space:normal;min-width:7.5em;max-width:9.5em}
+  #aba-lanc table thead{display:none}
+  #aba-lanc table,#aba-lanc tbody{display:block}
+  #aba-lanc tbody tr{display:grid;grid-template-columns:auto 1fr auto;gap:.2rem .7rem;padding:.75rem .15rem;border-bottom:1px solid var(--linha);align-items:center}
+  #aba-lanc tbody td{border:0;padding:0;min-width:0}
+  #aba-lanc tbody td:nth-child(3){grid-column:1/3;grid-row:1;font-weight:700;overflow-wrap:anywhere}
+  #aba-lanc tbody td:nth-child(6){grid-column:3;grid-row:1;font-size:1.05rem;font-weight:800;text-align:right}
+  #aba-lanc tbody td:nth-child(4){grid-column:1/3;grid-row:2}
+  #aba-lanc tbody td:nth-child(7){grid-column:3;grid-row:2;justify-self:end}
+  #aba-lanc tbody td:nth-child(1){grid-column:1;grid-row:3;font-size:.85rem;color:var(--tinta2)}
+  #aba-lanc tbody td:nth-child(5){grid-column:2;grid-row:3;font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #aba-lanc tbody td:nth-child(8){grid-column:3;grid-row:3;justify-self:end}
+  #aba-lanc tbody td:nth-child(2){display:none}
+}
+@media (max-width:430px){header.topo h1 .tt{display:none}}
 a.fx-a{color:inherit;text-decoration:none;border-bottom:1px dotted transparent}a.fx-a:hover{border-bottom-color:currentColor}
 tr.fx-g td{font-weight:800;font-family:Nunito,sans-serif}tr.fx-t td:first-child{padding-left:1.4rem}tr.fx-t td{font-size:.9rem}
 tr.fx-k td:first-child{padding-left:2.9rem}tr.fx-k td{font-size:.84rem;color:var(--tinta2)}tr.fx-k td a.fx-a{color:var(--tinta)}
@@ -570,7 +606,7 @@ function cardContas(M){
   const linha=s=>{
     const c=s.o;const pend=c.pendente?` <span class="tag alerta" title="${esc(c.pendente)}">${fe("alerta","p")} pendente</span>`:"";
     const nome=`<span class="nome">${fe(icConta(c),"p")}${esc(c.nome)}${pend}</span>`;
-    if(s.hist)return `<tr><td>${nome}</td><td colspan="4" class="sutil">Histórico (antes de ${mesLabel(c.mes)})</td><td class="v"><b>${s.fim==null?"–":brl(s.fim)}</b></td><td></td><td></td></tr>`;
+    if(s.hist)return `<tr class="hist"><td>${nome}</td><td colspan="4" class="sutil">Histórico (antes de ${mesLabel(c.mes)})</td><td class="v"><b>${s.fim==null?"–":brl(s.fim)}</b></td><td></td><td></td></tr>`;
     const aj=dados().find(l=>l.id===idAjuste(c.nome,M));let conf="";
     if(c.grupo==="cartao"){const fat=-s.prev;conf=fat>0.005?`<button class="btn mini" data-pagar="${esc(c.nome)}" data-valor="${r2(fat)}" data-rot="fatura de ${mesLabel(M)}">${fe("cartao","p")} Pagar ${brl(fat)}</button>`:`<span class="pos">${fe("conferido","p")} ${fat<-0.005?"crédito":"fatura paga"}</span>`;
       if(s.aberto&&M<=MES_HOJE)conf+=`<div style="margin-top:.3rem"><button class="btn mini perigo" data-pagar="${esc(c.nome)}" data-valor="${r2(-s.aberto)}" data-rot="fatura(s) anterior(es) em aberto" title="Fatura de mês anterior sem pagamento registrado">${fe("alerta","p")} Anterior em aberto ${brl(-s.aberto)}</button></div>`}
@@ -800,7 +836,7 @@ function cardFluxo(M){
   }
   return `<div class="painel"><div class="cab"><h2>${fe("analise")} Fluxo do disponível · ${PER==="ano"?"Ano "+M.slice(0,4):PER_LBL[PER]}</h2>
       <div class="acoes" style="margin:0"><div class="segmentos">${[["total","Total"],["contas","Por conta"]].map(([k,t])=>`<button data-fluxo="${k}" aria-pressed="${FLUXO===k}">${t}</button>`).join("")}</div>${seletorPeriodo()}</div></div>
-    <div class="rolagem"><table style="table-layout:fixed;min-width:${FLUXO==="contas"?1100:1040}px">
+    <div class="rolagem"><table class="fluxo" style="table-layout:fixed;min-width:${FLUXO==="contas"?1100:1040}px">
       <colgroup><col style="width:${FLUXO==="contas"?230:240}px">${MS.map(()=>"<col>").join("")}</colgroup>
       <thead><tr><th></th>${col.map((c,i)=>`<th style="padding:.2rem .15rem;border-bottom:0">${barra(c,i)}</th>`).join("")}</tr>
       <tr><th></th>${col.map(c=>`<th class="v" style="text-align:center;${c.m===M?"background:var(--amarelo-suave);color:var(--tinta)":""}${c.fut?";font-style:italic":""}"><a href="#" data-irmes="${c.m}" style="color:inherit;text-decoration:none">${mesCurto(c.m)}</a></th>`).join("")}</tr></thead>${corpo}
@@ -843,6 +879,7 @@ function renderLanc(){
       <div><label>Status</label><select id="fC"><option value="">Todos</option>${STATUS.map((s,i)=>`<option value="${i}" ${F.c===String(i)?"selected":""}>${s}</option>`).join("")}</select></div>
       <div><label>Para quem</label><select id="fPq">${opts(alfa(C().pessoas),F.pq,"Todos")}</select></div>
       <div><label>Projeto</label><select id="fPj">${opts(alfa(C().projetos),F.pj,"Todos")}</select></div>
+      <div class="so-cel"><label>Ordenar por</label><select id="fOrd">${[["dp","Data de pagamento"],["dc","Data da compra"],["v","Valor"],["l","Local"],["cat","Categoria"],["f","Conta"],["c","Status"]].map(([k,t])=>`<option value="${k}" ${ORD.k===k?"selected":""}>${t}${ORD.k===k?(ORD.d>0?" ▲":" ▼"):""}</option>`).join("")}</select></div>
       <div><label>Buscar</label><input id="fQ" value="${esc(F.q)}" placeholder="Local, descrição…"></div>
     </div>
     ${F.rev?`<p>${F.rev?'<span class="tag alerta">Só a conferir</span> ':""}<button class="btn mini sec" id="limpaF">Limpar filtros</button></p>`:""}
@@ -856,6 +893,7 @@ function renderLanc(){
     </tbody></table></div>`:`<div class="vazio">${fe("vazio","xg")}<p>Nenhum lançamento com esses filtros.</p></div>`}</div>`;
   const liga=(id,k)=>$(id).addEventListener(id==="#fQ"?"input":"change",e=>{F[k]=e.target.value;if(k==="tp"||k==="cat")F.sub=null;if(k==="tp")F.cat="";renderLanc();if(id==="#fQ"){const i=$("#fQ");i.focus();i.setSelectionRange(i.value.length,i.value.length)}});
   [["#fPer","per"],["#fTp","tp"],["#fConta","conta"],["#fCat","cat"],["#fC","c"],["#fPq","pq"],["#fPj","pj"],["#fQ","q"]].forEach(a=>liga(...a));
+  $("#fOrd").onchange=e=>{const k=e.target.value;if(ORD.k===k)ORD.d*=-1;else{ORD.k=k;ORD.d=["dp","dc","v"].includes(k)?-1:1}renderLanc()};
   $("#fSub").onchange=e=>{const v=e.target.value;if(!v)F.sub=null;else{const i=v.indexOf("|");F.cat=v.slice(0,i);F.sub=v.slice(i+1);if(!F.tp)F.tp="D"}renderLanc()};
   if($("#limpaF"))$("#limpaF").onclick=()=>{F.sub=null;F.rev=false;renderLanc()};
   if($("#verRev"))$("#verRev").onclick=()=>{Object.assign(F,{per:"todos",tp:"",conta:"",cat:"",sub:null,c:"",pq:"",pj:"",q:"",rev:true});renderLanc()};
@@ -1336,7 +1374,9 @@ function renderAjustes(){
   <div class="painel"><h2>${fe("conferido")} Importar correções</h2>
     <p>Aplica um arquivo de correções gerado numa revisão dos dados (por exemplo, <b>correcoes_*.json</b>). Antes de aplicar, a lista de mudanças aparece para conferência.</p>
     <input type="file" id="ajCorr" accept=".json"><div id="corrPrev"></div></div>
-  <div class="painel"><h2>${fe("estrela")} Aparência</h2><div class="segmentos">${[["auto","Automático"],["light","Claro"],["dark","Escuro"]].map(([k,t])=>`<button data-tema="${k}" aria-pressed="${tema===k}">${t}</button>`).join("")}</div></div>
+  <div class="painel"><h2>${fe("estrela")} Aparência</h2><div class="segmentos">${[["auto","Automático"],["light","Claro"],["dark","Escuro"]].map(([k,t])=>`<button data-tema="${k}" aria-pressed="${tema===k}">${t}</button>`).join("")}</div>
+    <div style="margin-top:.9rem"><label>Tamanho do texto neste aparelho</label><div class="segmentos"><button data-tam="-" aria-label="Diminuir texto">A−</button><button aria-pressed="true" disabled>${Math.round(ESCALA*100)}%</button><button data-tam="+" aria-label="Aumentar texto">A+</button></div>
+    <p class="sutil">No iPhone, o app também segue o tamanho de texto do aparelho (Ajustes → Tela e Brilho → Tamanho do Texto).</p></div></div>
   <div class="painel"><h2>${fe("presentes")} Créditos</h2><p class="sutil">Ícones: <b>Fluent Emoji</b>, da Microsoft, licença MIT (github.com/microsoft/fluentui-emoji).</p></div>
   </div></div>`;
   $("#ajModo").onchange=e=>$("#ajOD").classList.toggle("oculto",e.target.value!=="onedrive");
@@ -1377,8 +1417,12 @@ document.querySelectorAll("[data-fe]").forEach(s=>s.outerHTML=fe(s.dataset.fe,s.
 document.querySelectorAll("nav.abas button").forEach(b=>b.insertAdjacentHTML("afterbegin",fe(b.dataset.ic)));
 try{const t=localStorage.getItem("orcamento2.tema");if(t&&t!=="auto")document.documentElement.dataset.theme=t}catch{}
 function irAba(a){ABA=a;document.querySelectorAll("nav.abas button").forEach(b=>b.setAttribute("aria-selected",b.dataset.aba===a));
-  document.querySelectorAll("main>section").forEach(s=>s.classList.toggle("oculto",s.id!=="aba-"+a));const[t,ic]=TITULOS[a];$("#tituloAba").innerHTML=`${fe(ic)} ${t}`;renderAba();window.scrollTo(0,0)}
+  document.querySelectorAll("main>section").forEach(s=>s.classList.toggle("oculto",s.id!=="aba-"+a));const[t,ic]=TITULOS[a];$("#tituloAba").innerHTML=`${fe(ic)} <span class="tt">${t}</span>`;renderAba();window.scrollTo(0,0)}
 function renderAba(){({painel:renderPainel,novo:renderNovo,lanc:renderLanc,analise:renderAnalise,orc:renderOrc,cad:renderCad,ia:renderIA,ajustes:renderAjustes})[ABA]();if(DEMO&&ABA==="ajustes"){const a=$("#aba-ajustes");["#ajModo","#ajCarga","#ajCorr"].forEach(q=>{const e=a.querySelector(q);if(e)e.closest(".painel").remove()})}}
+let ESCALA=1;try{ESCALA=+localStorage.getItem("orcamento2.escala")||1}catch{}
+function aplicarEscala(){const h=document.documentElement;h.style.fontSize="";const base=parseFloat(getComputedStyle(h).fontSize)||16;if(ESCALA!==1)h.style.fontSize=(base*ESCALA)+"px"}
+aplicarEscala();
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tam]");if(!b)return;ESCALA=Math.min(1.5,Math.max(.8,Math.round((ESCALA+(b.dataset.tam==="+"?.1:-.1))*10)/10));try{localStorage.setItem("orcamento2.escala",ESCALA)}catch{}aplicarEscala();renderAba()});
 function renderTudo(){$("#mesLbl").textContent=mesLabel(S.mes);$("#quem").textContent=DEMO?"Demonstração (dados fictícios)":CFG.modo==="onedrive"?S.usuario:"Modo de teste";renderAba()}
 function aplicarOlho(){document.body.classList.toggle("ocultar",OCULTO);const b=$("#olho");b.textContent=OCULTO?"🙈":"👁️";b.setAttribute("aria-pressed",OCULTO);b.title=b.ariaLabel=OCULTO?"Mostrar valores":"Ocultar valores"}
 $("#olho").onclick=()=>{OCULTO=!OCULTO;try{localStorage.setItem("orcamento2.ocultar",OCULTO?"1":"0")}catch{}aplicarOlho();renderTudo()};
